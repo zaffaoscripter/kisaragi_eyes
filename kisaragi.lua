@@ -3,6 +3,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local Players          = game:GetService("Players")
 local HttpService      = game:GetService("HttpService")
+local TweenService     = game:GetService("TweenService")
 local LocalPlayer      = Players.LocalPlayer
 local Camera           = workspace.CurrentCamera
 
@@ -14,10 +15,9 @@ local SAVE_FILE_NAME = "KisaragiEyes_Data.json"
 -- [UserId] = { Color = {r, g, b}, CustomName = string }
 local playerData = {}
 
--- Função para Salvar Chaves no File System do Executor
 local function saveConfig()
     if writefile then
-        local success, err = pcall(function()
+        pcall(function()
             local rawData = {}
             for userId, data in pairs(playerData) do
                 rawData[tostring(userId)] = {
@@ -30,10 +30,9 @@ local function saveConfig()
     end
 end
 
--- Função para Carregar Chaves Salvas
 local function loadConfig()
     if readfile and isfile and isfile(SAVE_FILE_NAME) then
-        local success, result = pcall(function()
+        pcall(function()
             local decoded = HttpService:JSONDecode(readfile(SAVE_FILE_NAME))
             for userIdStr, data in pairs(decoded) do
                 local uid = tonumber(userIdStr)
@@ -50,20 +49,85 @@ end
 
 loadConfig()
 
--- Paleta de cores expandida e suave
+-- ==================== Tabela de Cores Deduplicada ====================
 local COLOR_PALETTE = {
-    { Name = "Prata",    Color = Color3.fromRGB(220, 225, 235) },
-    { Name = "Ciano",    Color = Color3.fromRGB(0, 230, 255) },
-    { Name = "Violeta",  Color = Color3.fromRGB(170, 90, 255) },
-    { Name = "Magenta",  Color = Color3.fromRGB(255, 60, 180) },
-    { Name = "Menta",    Color = Color3.fromRGB(80, 255, 175) },
-    { Name = "Ouro",     Color = Color3.fromRGB(255, 215, 60) },
-    { Name = "Pêssego",  Color = Color3.fromRGB(255, 140, 90) },
-    { Name = "Carmim",   Color = Color3.fromRGB(255, 55, 80) },
-    { Name = "Coral",    Color = Color3.fromRGB(255, 110, 150) },
-    { Name = "Oceano",   Color = Color3.fromRGB(50, 150, 255) },
-    { Name = "Esmeralda",Color = Color3.fromRGB(40, 220, 120) },
-    { Name = "Lava",     Color = Color3.fromRGB(255, 90, 30) },
+    { Name = "Vermelho",        Color = Color3.fromRGB(255, 0, 0) },
+    { Name = "Azul",            Color = Color3.fromRGB(0, 120, 255) },
+    { Name = "Amarelo",         Color = Color3.fromRGB(255, 230, 0) },
+    { Name = "Verde",           Color = Color3.fromRGB(0, 220, 100) },
+    { Name = "Laranja",         Color = Color3.fromRGB(255, 130, 0) },
+    { Name = "Roxo",            Color = Color3.fromRGB(150, 40, 255) },
+    { Name = "Rosa",            Color = Color3.fromRGB(255, 105, 180) },
+    { Name = "Marrom",          Color = Color3.fromRGB(139, 69, 19) },
+    { Name = "Preto",           Color = Color3.fromRGB(20, 20, 25) },
+    { Name = "Branco",          Color = Color3.fromRGB(255, 255, 255) },
+    { Name = "Cinza",           Color = Color3.fromRGB(128, 128, 128) },
+    { Name = "Ciano",           Color = Color3.fromRGB(0, 230, 255) },
+    { Name = "Magenta",         Color = Color3.fromRGB(255, 0, 255) },
+    { Name = "Turquesa",        Color = Color3.fromRGB(64, 224, 208) },
+    { Name = "Índigo",          Color = Color3.fromRGB(75, 0, 130) },
+    { Name = "Violeta",         Color = Color3.fromRGB(170, 90, 255) },
+    { Name = "Anil",            Color = Color3.fromRGB(15, 82, 186) },
+    { Name = "Carmim",          Color = Color3.fromRGB(220, 20, 60) },
+    { Name = "Escarlate",       Color = Color3.fromRGB(255, 36, 0) },
+    { Name = "Bordô",           Color = Color3.fromRGB(128, 0, 32) },
+    { Name = "Borgonha",        Color = Color3.fromRGB(128, 0, 32) },
+    { Name = "Rubi",            Color = Color3.fromRGB(155, 17, 30) },
+    { Name = "Coral",           Color = Color3.fromRGB(255, 127, 80) },
+    { Name = "Salmão",          Color = Color3.fromRGB(250, 128, 114) },
+    { Name = "Pêssego",         Color = Color3.fromRGB(255, 218, 185) },
+    { Name = "Âmbar",           Color = Color3.fromRGB(255, 191, 0) },
+    { Name = "Ocre",            Color = Color3.fromRGB(204, 119, 34) },
+    { Name = "Mostarda",        Color = Color3.fromRGB(225, 173, 1) },
+    { Name = "Dourado",         Color = Color3.fromRGB(255, 215, 0) },
+    { Name = "Bronze",          Color = Color3.fromRGB(205, 127, 50) },
+    { Name = "Cobre",           Color = Color3.fromRGB(184, 115, 51) },
+    { Name = "Bege",            Color = Color3.fromRGB(245, 245, 220) },
+    { Name = "Creme",           Color = Color3.fromRGB(255, 253, 208) },
+    { Name = "Marfim",          Color = Color3.fromRGB(255, 255, 240) },
+    { Name = "Caqui",           Color = Color3.fromRGB(195, 176, 145) },
+    { Name = "Oliva",           Color = Color3.fromRGB(128, 128, 0) },
+    { Name = "Esmeralda",       Color = Color3.fromRGB(80, 200, 120) },
+    { Name = "Jade",            Color = Color3.fromRGB(0, 168, 107) },
+    { Name = "Menta",           Color = Color3.fromRGB(152, 251, 152) },
+    { Name = "Musgo",           Color = Color3.fromRGB(138, 154, 91) },
+    { Name = "Pistache",        Color = Color3.fromRGB(147, 197, 114) },
+    { Name = "Lima",            Color = Color3.fromRGB(191, 255, 0) },
+    { Name = "Chartreuse",      Color = Color3.fromRGB(127, 255, 0) },
+    { Name = "Água-marinha",    Color = Color3.fromRGB(127, 255, 212) },
+    { Name = "Safira",          Color = Color3.fromRGB(15, 82, 186) },
+    { Name = "Cobalto",         Color = Color3.fromRGB(0, 71, 171) },
+    { Name = "Cerúleo",         Color = Color3.fromRGB(42, 82, 190) },
+    { Name = "Ultramarino",     Color = Color3.fromRGB(18, 10, 143) },
+    { Name = "Azul-petróleo",   Color = Color3.fromRGB(0, 95, 105) },
+    { Name = "Lavanda",         Color = Color3.fromRGB(230, 230, 250) },
+    { Name = "Lilás",           Color = Color3.fromRGB(200, 162, 200) },
+    { Name = "Ameixa",          Color = Color3.fromRGB(221, 160, 221) },
+    { Name = "Ametista",        Color = Color3.fromRGB(153, 102, 204) },
+    { Name = "Púrpura",         Color = Color3.fromRGB(128, 0, 128) },
+    { Name = "Fúcsia",          Color = Color3.fromRGB(255, 0, 255) },
+    { Name = "Orquídea",        Color = Color3.fromRGB(218, 112, 214) },
+    { Name = "Malva",           Color = Color3.fromRGB(224, 176, 255) },
+    { Name = "Sépia",           Color = Color3.fromRGB(112, 66, 20) },
+    { Name = "Terracota",       Color = Color3.fromRGB(226, 114, 91) },
+    { Name = "Ferrugem",        Color = Color3.fromRGB(183, 65, 14) },
+    { Name = "Canela",          Color = Color3.fromRGB(210, 105, 30) },
+    { Name = "Caramelo",        Color = Color3.fromRGB(198, 115, 38) },
+    { Name = "Chocolate",       Color = Color3.fromRGB(123, 63, 0) },
+    { Name = "Café",            Color = Color3.fromRGB(111, 78, 55) },
+    { Name = "Mogno",           Color = Color3.fromRGB(192, 64, 0) },
+    { Name = "Ébano",           Color = Color3.fromRGB(40, 40, 45) },
+    { Name = "Siena",           Color = Color3.fromRGB(160, 82, 45) },
+    { Name = "Prata",           Color = Color3.fromRGB(192, 192, 192) },
+    { Name = "Platina",         Color = Color3.fromRGB(229, 228, 226) },
+    { Name = "Titânio",         Color = Color3.fromRGB(135, 134, 129) },
+    { Name = "Grafite",         Color = Color3.fromRGB(56, 56, 56) },
+    { Name = "Chumbo",          Color = Color3.fromRGB(80, 80, 90) },
+    { Name = "Pérola",          Color = Color3.fromRGB(240, 234, 214) },
+    { Name = "Opala",           Color = Color3.fromRGB(168, 195, 188) },
+    { Name = "Granada",         Color = Color3.fromRGB(131, 29, 28) },
+    { Name = "Topázio",         Color = Color3.fromRGB(255, 200, 124) },
+    { Name = "Obsidiana",       Color = Color3.fromRGB(27, 26, 31) },
 }
 
 local selectedPlayer = nil
@@ -108,7 +172,7 @@ end
 local function getPlayerData(player)
     if not playerData[player.UserId] then
         playerData[player.UserId] = {
-            Color = Color3.fromRGB(220, 225, 235), -- Cor padrão Prata
+            Color = Color3.fromRGB(220, 225, 235),
             CustomName = ""
         }
     end
@@ -117,21 +181,17 @@ end
 
 local function createESP(character, player)
     if espObjects[character] then return end
-    
     local data = getPlayerData(player)
     local label = newLabel()
     local highlight = applyAura(character, data.Color)
-    
     espObjects[character] = { label = label, highlight = highlight, player = player }
 end
 
 local function removeESP(character)
     local obj = espObjects[character]
     if not obj then return end
-    
     if obj.label then pcall(function() obj.label:Remove() end) end
     if obj.highlight then pcall(function() obj.highlight:Destroy() end) end
-    
     espObjects[character] = nil
 end
 
@@ -212,31 +272,32 @@ screenGui.ResetOnSpawn   = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent         = LocalPlayer:WaitForChild("PlayerGui")
 
--- ==================== Main Frame (Vermelho Carmesim Transparente) ====================
+-- ==================== Main Frame ====================
 local mainFrame = Instance.new("Frame")
-mainFrame.Size                   = UDim2.new(0, 340, 0, 420)
-mainFrame.Position               = UDim2.new(0.5, -170, 0.5, -210)
-mainFrame.BackgroundColor3       = Color3.fromRGB(35, 5, 12) -- Carmesim Bem Escuro
-mainFrame.BackgroundTransparency = 0.25 -- Transparência Elegante
-mainFrame.BorderSizePixel        = 0
-mainFrame.Visible                = true
-mainFrame.Active                 = true
-mainFrame.Parent                 = screenGui
-mainFrame.ZIndex                 = 5
+mainFrame.Size                 = UDim2.new(0, 340, 0, 480)
+mainFrame.Position             = UDim2.new(0.5, -170, 0.5, -240)
+mainFrame.BackgroundColor3     = Color3.fromRGB(22, 6, 12)
+mainFrame.BackgroundTransparency = 0.15
+mainFrame.BorderSizePixel          = 0
+mainFrame.Visible              = true
+mainFrame.Active               = true
+mainFrame.ClipsDescendants      = false
+mainFrame.Parent               = screenGui
+mainFrame.ZIndex               = 5
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
 
 local frameStroke = Instance.new("UIStroke")
-frameStroke.Color        = Color3.fromRGB(180, 20, 50)
+frameStroke.Color        = Color3.fromRGB(200, 30, 60)
 frameStroke.Thickness    = 1.5
 frameStroke.Transparency = 0.2
 frameStroke.Parent       = mainFrame
 
 -- ==================== Drag System ====================
 local titleBar = Instance.new("Frame")
-titleBar.Size               = UDim2.new(1, 0, 0, 42)
+titleBar.Size                   = UDim2.new(1, 0, 0, 42)
 titleBar.BackgroundTransparency = 1
-titleBar.ZIndex             = 9
-titleBar.Parent             = mainFrame
+titleBar.ZIndex                 = 9
+titleBar.Parent                 = mainFrame
 
 do
     local dragging, dragMouse, dragOrigin = false, nil, nil
@@ -268,7 +329,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size                   = UDim2.new(1, 0, 0, 42)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text                   = "Kisaragi Eyes"
-titleLabel.TextColor3             = Color3.fromRGB(255, 220, 225)
+titleLabel.TextColor3             = Color3.fromRGB(255, 235, 240)
 titleLabel.Font                   = Enum.Font.GothamBlack
 titleLabel.TextSize               = 17
 titleLabel.ZIndex                 = 7
@@ -277,110 +338,144 @@ titleLabel.Parent                 = mainFrame
 local sep = Instance.new("Frame")
 sep.Size             = UDim2.new(1, -28, 0, 1)
 sep.Position         = UDim2.new(0, 14, 0, 42)
-sep.BackgroundColor3 = Color3.fromRGB(80, 20, 35)
+sep.BackgroundColor3 = Color3.fromRGB(100, 25, 45)
 sep.BorderSizePixel  = 0
 sep.ZIndex           = 7
 sep.Parent           = mainFrame
 
--- ==================== Toggles (Nomes & Aura) ====================
-local rowToggleNames = Instance.new("Frame")
-rowToggleNames.Size               = UDim2.new(1, -28, 0, 24)
-rowToggleNames.Position           = UDim2.new(0, 14, 0, 50)
-rowToggleNames.BackgroundTransparency = 1
-rowToggleNames.ZIndex             = 6
-rowToggleNames.Parent             = mainFrame
+-- ==================== Helper Switch (Chave Ativar/Desativar) ====================
+local function createSwitch(parent, labelText, initialValue, posY, callback)
+    local row = Instance.new("Frame")
+    row.Size                   = UDim2.new(1, -28, 0, 26)
+    row.Position               = UDim2.new(0, 14, 0, posY)
+    row.BackgroundTransparency = 1
+    row.ZIndex                 = 6
+    row.Parent                 = parent
 
-local lblToggleNames = Instance.new("TextLabel")
-lblToggleNames.Size               = UDim2.new(0.7, 0, 1, 0)
-lblToggleNames.BackgroundTransparency = 1
-lblToggleNames.Text               = "Exibir Nomes ESP"
-lblToggleNames.TextColor3         = Color3.fromRGB(240, 220, 225)
-lblToggleNames.Font               = Enum.Font.GothamSemibold
-lblToggleNames.TextSize           = 12
-lblToggleNames.TextXAlignment     = Enum.TextXAlignment.Left
-lblToggleNames.ZIndex             = 7
-lblToggleNames.Parent             = rowToggleNames
+    local lbl = Instance.new("TextLabel")
+    lbl.Size                   = UDim2.new(0.7, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text                   = labelText
+    lbl.TextColor3             = Color3.fromRGB(240, 220, 225)
+    lbl.Font                   = Enum.Font.GothamSemibold
+    lbl.TextSize               = 12
+    lbl.TextXAlignment         = Enum.TextXAlignment.Left
+    lbl.ZIndex                 = 7
+    lbl.Parent                 = row
 
-local btnToggleNames = Instance.new("TextButton")
-btnToggleNames.Size             = UDim2.new(0, 50, 0, 20)
-btnToggleNames.Position         = UDim2.new(1, -50, 0.5, -10)
-btnToggleNames.BackgroundColor3 = ESPNameEnabled and Color3.fromRGB(180, 20, 50) or Color3.fromRGB(45, 15, 25)
-btnToggleNames.Text             = ESPNameEnabled and "ON" or "OFF"
-btnToggleNames.TextColor3       = Color3.fromRGB(255, 255, 255)
-btnToggleNames.Font             = Enum.Font.GothamBold
-btnToggleNames.TextSize         = 11
-btnToggleNames.BorderSizePixel  = 0
-btnToggleNames.ZIndex           = 8
-btnToggleNames.Parent           = rowToggleNames
-Instance.new("UICorner", btnToggleNames).CornerRadius = UDim.new(0, 5)
+    local switchBg = Instance.new("Frame")
+    switchBg.Size             = UDim2.new(0, 44, 0, 22)
+    switchBg.Position         = UDim2.new(1, -44, 0.5, -11)
+    switchBg.BackgroundColor3 = initialValue and Color3.fromRGB(200, 30, 60) or Color3.fromRGB(45, 18, 25)
+    switchBg.BorderSizePixel  = 0
+    switchBg.ZIndex           = 7
+    switchBg.Parent           = row
+    Instance.new("UICorner", switchBg).CornerRadius = UDim.new(1, 0)
 
-btnToggleNames.MouseButton1Click:Connect(function()
-    ESPNameEnabled = not ESPNameEnabled
-    btnToggleNames.BackgroundColor3 = ESPNameEnabled and Color3.fromRGB(180, 20, 50) or Color3.fromRGB(45, 15, 25)
-    btnToggleNames.Text             = ESPNameEnabled and "ON" or "OFF"
+    local switchDot = Instance.new("Frame")
+    switchDot.Size             = UDim2.new(0, 16, 0, 16)
+    switchDot.Position         = initialValue and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+    switchDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    switchDot.BorderSizePixel  = 0
+    switchDot.ZIndex           = 8
+    switchDot.Parent           = switchBg
+    Instance.new("UICorner", switchDot).CornerRadius = UDim.new(1, 0)
+
+    local btn = Instance.new("TextButton")
+    btn.Size                   = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text                   = ""
+    btn.ZIndex                 = 9
+    btn.Parent                 = switchBg
+
+    local state = initialValue
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        local targetPos = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+        local targetBg  = state and Color3.fromRGB(200, 30, 60) or Color3.fromRGB(45, 18, 25)
+        
+        TweenService:Create(switchDot, TweenInfo.new(0.2), {Position = targetPos}):Play()
+        TweenService:Create(switchBg, TweenInfo.new(0.2), {BackgroundColor3 = targetBg}):Play()
+        
+        callback(state)
+    end)
+end
+
+createSwitch(mainFrame, "Exibir Nomes ESP", ESPNameEnabled, 52, function(val)
+    ESPNameEnabled = val
 end)
 
-local rowToggleAura = Instance.new("Frame")
-rowToggleAura.Size               = UDim2.new(1, -28, 0, 24)
-rowToggleAura.Position           = UDim2.new(0, 14, 0, 78)
-rowToggleAura.BackgroundTransparency = 1
-rowToggleAura.ZIndex             = 6
-rowToggleAura.Parent             = mainFrame
-
-local lblToggleAura = Instance.new("TextLabel")
-lblToggleAura.Size               = UDim2.new(0.7, 0, 1, 0)
-lblToggleAura.BackgroundTransparency = 1
-lblToggleAura.Text               = "Exibir Aura Visual"
-lblToggleAura.TextColor3         = Color3.fromRGB(240, 220, 225)
-lblToggleAura.Font               = Enum.Font.GothamSemibold
-lblToggleAura.TextSize           = 12
-lblToggleAura.TextXAlignment     = Enum.TextXAlignment.Left
-lblToggleAura.ZIndex             = 7
-lblToggleAura.Parent             = rowToggleAura
-
-local btnToggleAura = Instance.new("TextButton")
-btnToggleAura.Size             = UDim2.new(0, 50, 0, 20)
-btnToggleAura.Position         = UDim2.new(1, -50, 0.5, -10)
-btnToggleAura.BackgroundColor3 = ESPAuraEnabled and Color3.fromRGB(180, 20, 50) or Color3.fromRGB(45, 15, 25)
-btnToggleAura.Text             = ESPAuraEnabled and "ON" or "OFF"
-btnToggleAura.TextColor3       = Color3.fromRGB(255, 255, 255)
-btnToggleAura.Font             = Enum.Font.GothamBold
-btnToggleAura.TextSize         = 11
-btnToggleAura.BorderSizePixel  = 0
-btnToggleAura.ZIndex           = 8
-btnToggleAura.Parent           = rowToggleAura
-Instance.new("UICorner", btnToggleAura).CornerRadius = UDim.new(0, 5)
-
-btnToggleAura.MouseButton1Click:Connect(function()
-    ESPAuraEnabled = not ESPAuraEnabled
-    btnToggleAura.BackgroundColor3 = ESPAuraEnabled and Color3.fromRGB(180, 20, 50) or Color3.fromRGB(45, 15, 25)
-    btnToggleAura.Text             = ESPAuraEnabled and "ON" or "OFF"
+createSwitch(mainFrame, "Exibir Aura Visual", ESPAuraEnabled, 84, function(val)
+    ESPAuraEnabled = val
 end)
 
--- ==================== Lista de Jogadores ====================
-local lblPlayerList = Instance.new("TextLabel")
-lblPlayerList.Size               = UDim2.new(1, -28, 0, 16)
-lblPlayerList.Position           = UDim2.new(0, 14, 0, 108)
-lblPlayerList.BackgroundTransparency = 1
-lblPlayerList.Text               = "Selecione um Jogador:"
-lblPlayerList.TextColor3         = Color3.fromRGB(200, 160, 170)
-lblPlayerList.Font               = Enum.Font.GothamSemibold
-lblPlayerList.TextSize           = 11
-lblPlayerList.TextXAlignment     = Enum.TextXAlignment.Left
-lblPlayerList.ZIndex             = 7
-lblPlayerList.Parent             = mainFrame
+-- ==================== Dropdown 1: Seleção de Jogador ====================
+local lblSelectPlayer = Instance.new("TextLabel")
+lblSelectPlayer.Size                   = UDim2.new(1, -28, 0, 16)
+lblSelectPlayer.Position               = UDim2.new(0, 14, 0, 118)
+lblSelectPlayer.BackgroundTransparency = 1
+lblSelectPlayer.Text                   = "Jogador Selecionado:"
+lblSelectPlayer.TextColor3             = Color3.fromRGB(200, 160, 170)
+lblSelectPlayer.Font                   = Enum.Font.GothamSemibold
+lblSelectPlayer.TextSize               = 11
+lblSelectPlayer.TextXAlignment         = Enum.TextXAlignment.Left
+lblSelectPlayer.ZIndex                 = 7
+lblSelectPlayer.Parent                 = mainFrame
+
+local btnPlayerDropdown = Instance.new("TextButton")
+btnPlayerDropdown.Size             = UDim2.new(1, -28, 0, 28)
+btnPlayerDropdown.Position         = UDim2.new(0, 14, 0, 136)
+btnPlayerDropdown.BackgroundColor3 = Color3.fromRGB(35, 10, 18)
+btnPlayerDropdown.Text             = "  Clique para escolher um jogador ▼"
+btnPlayerDropdown.TextColor3       = Color3.fromRGB(255, 255, 255)
+btnPlayerDropdown.Font             = Enum.Font.GothamSemibold
+btnPlayerDropdown.TextSize         = 11
+btnPlayerDropdown.TextXAlignment   = Enum.TextXAlignment.Left
+btnPlayerDropdown.BorderSizePixel  = 0
+btnPlayerDropdown.ZIndex           = 7
+btnPlayerDropdown.Parent           = mainFrame
+Instance.new("UICorner", btnPlayerDropdown).CornerRadius = UDim.new(0, 6)
+
+local playerDropContainer = Instance.new("Frame")
+playerDropContainer.Size                 = UDim2.new(1, -28, 0, 145)
+playerDropContainer.Position             = UDim2.new(0, 14, 0, 168)
+playerDropContainer.BackgroundColor3     = Color3.fromRGB(25, 8, 14)
+playerDropContainer.BorderSizePixel      = 0
+playerDropContainer.Visible              = false
+playerDropContainer.ZIndex               = 20
+playerDropContainer.Parent               = mainFrame
+Instance.new("UICorner", playerDropContainer).CornerRadius = UDim.new(0, 6)
+
+local pDropStroke = Instance.new("UIStroke")
+pDropStroke.Color = Color3.fromRGB(150, 30, 50)
+pDropStroke.Thickness = 1
+pDropStroke.Parent = playerDropContainer
+
+-- Caixa de Pesquisa
+local searchBox = Instance.new("TextBox")
+searchBox.Size             = UDim2.new(1, -12, 0, 24)
+searchBox.Position         = UDim2.new(0, 6, 0, 6)
+searchBox.BackgroundColor3 = Color3.fromRGB(15, 5, 8)
+searchBox.TextColor3       = Color3.fromRGB(255, 255, 255)
+searchBox.PlaceholderText  = "🔍 Pesquisar jogador..."
+searchBox.Text             = ""
+searchBox.Font             = Enum.Font.Gotham
+searchBox.TextSize         = 11
+searchBox.BorderSizePixel  = 0
+searchBox.ClearTextOnFocus = false
+searchBox.ZIndex           = 21
+searchBox.Parent           = playerDropContainer
+Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 4)
 
 local playerListFrame = Instance.new("ScrollingFrame")
-playerListFrame.Size               = UDim2.new(1, -28, 0, 75)
-playerListFrame.Position           = UDim2.new(0, 14, 0, 126)
-playerListFrame.BackgroundColor3   = Color3.fromRGB(20, 5, 10)
-playerListFrame.BackgroundTransparency = 0.3
+playerListFrame.Size               = UDim2.new(1, -12, 0, 105)
+playerListFrame.Position           = UDim2.new(0, 6, 0, 34)
+playerListFrame.BackgroundTransparency = 1
 playerListFrame.BorderSizePixel    = 0
 playerListFrame.CanvasSize         = UDim2.new(0, 0, 0, 0)
-playerListFrame.ScrollBarThickness = 4
-playerListFrame.ZIndex             = 6
-playerListFrame.Parent             = mainFrame
-Instance.new("UICorner", playerListFrame).CornerRadius = UDim.new(0, 6)
+playerListFrame.ScrollBarThickness = 3
+playerListFrame.ZIndex             = 21
+playerListFrame.Parent             = playerDropContainer
 
 local listLayout = Instance.new("UIListLayout")
 listLayout.Padding = UDim.new(0, 3)
@@ -394,71 +489,84 @@ updatePlayerList = function()
     for _, btn in pairs(playerButtons) do btn:Destroy() end
     playerButtons = {}
 
+    local filter = searchBox.Text:lower()
     local count = 0
+
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer then
-            count = count + 1
-            local btn = Instance.new("TextButton")
-            btn.Size             = UDim2.new(1, -6, 0, 22)
-            btn.BackgroundColor3 = (selectedPlayer == p) and Color3.fromRGB(120, 20, 40) or Color3.fromRGB(45, 10, 20)
-            btn.Text             = "  " .. p.Name
-            btn.TextColor3       = Color3.fromRGB(255, 255, 255)
-            btn.Font             = Enum.Font.Gotham
-            btn.TextSize         = 12
-            btn.TextXAlignment   = Enum.TextXAlignment.Left
-            btn.BorderSizePixel  = 0
-            btn.ZIndex           = 7
-            btn.Parent           = playerListFrame
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-
-            btn.MouseButton1Click:Connect(function()
-                selectedPlayer = p
-                updatePlayerList()
-                if boxRename and selectedPlayer then
-                    local data = getPlayerData(selectedPlayer)
-                    boxRename.Text = data.CustomName
-                end
-            end)
+            local data = getPlayerData(p)
+            local customName = data.CustomName:lower()
+            local pName = p.Name:lower()
             
-            table.insert(playerButtons, btn)
+            if filter == "" or pName:find(filter) or customName:find(filter) then
+                count = count + 1
+                local btn = Instance.new("TextButton")
+                btn.Size             = UDim2.new(1, -4, 0, 22)
+                btn.BackgroundColor3 = (selectedPlayer == p) and Color3.fromRGB(160, 25, 50) or Color3.fromRGB(45, 12, 22)
+                btn.Text             = "  " .. p.Name .. ((data.CustomName ~= "") and (" [" .. data.CustomName .. "]") or "")
+                btn.TextColor3       = Color3.fromRGB(255, 255, 255)
+                btn.Font             = Enum.Font.Gotham
+                btn.TextSize         = 11
+                btn.TextXAlignment   = Enum.TextXAlignment.Left
+                btn.BorderSizePixel  = 0
+                btn.ZIndex           = 22
+                btn.Parent           = playerListFrame
+                Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+                btn.MouseButton1Click:Connect(function()
+                    selectedPlayer = p
+                    btnPlayerDropdown.Text = "  " .. p.Name .. " ▼"
+                    playerDropContainer.Visible = false
+                    updatePlayerList()
+                    if boxRename and selectedPlayer then
+                        boxRename.Text = data.CustomName
+                    end
+                end)
+                
+                table.insert(playerButtons, btn)
+            end
         end
     end
     playerListFrame.CanvasSize = UDim2.new(0, 0, 0, count * 25)
 end
 
+searchBox:GetPropertyChangedSignal("Text"):Connect(updatePlayerList)
+btnPlayerDropdown.MouseButton1Click:Connect(function()
+    playerDropContainer.Visible = not playerDropContainer.Visible
+end)
+
 Players.PlayerAdded:Connect(updatePlayerList)
 Players.PlayerRemoving:Connect(updatePlayerList)
 task.defer(updatePlayerList)
 
--- ==================== Edição Individual ====================
+-- ==================== Edição de Apelido ====================
 local rowRename = Instance.new("Frame")
-rowRename.Size               = UDim2.new(1, -28, 0, 28)
-rowRename.Position           = UDim2.new(0, 14, 0, 210)
+rowRename.Size                   = UDim2.new(1, -28, 0, 28)
+rowRename.Position               = UDim2.new(0, 14, 0, 172)
 rowRename.BackgroundTransparency = 1
-rowRename.ZIndex             = 6
-rowRename.Parent             = mainFrame
+rowRename.ZIndex                 = 6
+rowRename.Parent                 = mainFrame
 
 local lblRename = Instance.new("TextLabel")
-lblRename.Size               = UDim2.new(0.4, 0, 1, 0)
+lblRename.Size                   = UDim2.new(0.35, 0, 1, 0)
 lblRename.BackgroundTransparency = 1
-lblRename.Text               = "Apelido:"
-lblRename.TextColor3         = Color3.fromRGB(240, 220, 225)
-lblRename.Font               = Enum.Font.GothamSemibold
-lblRename.TextSize           = 12
-lblRename.TextXAlignment     = Enum.TextXAlignment.Left
-lblRename.ZIndex             = 7
-lblRename.Parent             = rowRename
+lblRename.Text                   = "Apelido:"
+lblRename.TextColor3             = Color3.fromRGB(240, 220, 225)
+lblRename.Font                   = Enum.Font.GothamSemibold
+lblRename.TextSize               = 12
+lblRename.TextXAlignment         = Enum.TextXAlignment.Left
+lblRename.ZIndex                 = 7
+lblRename.Parent                 = rowRename
 
 boxRename = Instance.new("TextBox")
-boxRename.Size             = UDim2.new(0.6, 0, 0, 24)
-boxRename.Position         = UDim2.new(0.4, 0, 0.5, -12)
+boxRename.Size             = UDim2.new(0.65, 0, 0, 26)
+boxRename.Position         = UDim2.new(0.35, 0, 0.5, -13)
 boxRename.BackgroundColor3 = Color3.fromRGB(20, 5, 10)
-boxRename.BackgroundTransparency = 0.3
 boxRename.TextColor3       = Color3.fromRGB(255, 255, 255)
-boxRename.PlaceholderText  = "Selecione um player"
+boxRename.PlaceholderText  = "Selecione um player..."
 boxRename.Text             = ""
 boxRename.Font             = Enum.Font.Gotham
-boxRename.TextSize         = 12
+boxRename.TextSize         = 11
 boxRename.BorderSizePixel  = 0
 boxRename.ClearTextOnFocus = false
 boxRename.ZIndex           = 8
@@ -469,67 +577,116 @@ boxRename.FocusLost:Connect(function()
     if selectedPlayer then
         local data = getPlayerData(selectedPlayer)
         data.CustomName = boxRename.Text
-        saveConfig() -- Salva as alterações no ficheiro
+        saveConfig()
+        updatePlayerList()
     end
 end)
 
--- Paleta de Cores
-local lblPalette = Instance.new("TextLabel")
-lblPalette.Size               = UDim2.new(1, -28, 0, 16)
-lblPalette.Position           = UDim2.new(0, 14, 0, 246)
-lblPalette.BackgroundTransparency = 1
-lblPalette.Text               = "Cor da Aura:"
-lblPalette.TextColor3         = Color3.fromRGB(240, 220, 225)
-lblPalette.Font               = Enum.Font.GothamSemibold
-lblPalette.TextSize           = 12
-lblPalette.TextXAlignment     = Enum.TextXAlignment.Left
-lblPalette.ZIndex             = 7
-lblPalette.Parent             = mainFrame
+-- ==================== Dropdown 2: Seleção de Cor ====================
+local lblColor = Instance.new("TextLabel")
+lblColor.Size                   = UDim2.new(1, -28, 0, 16)
+lblColor.Position               = UDim2.new(0, 14, 0, 208)
+lblColor.BackgroundTransparency = 1
+lblColor.Text                   = "Cor da Aura:"
+lblColor.TextColor3             = Color3.fromRGB(200, 160, 170)
+lblColor.Font                   = Enum.Font.GothamSemibold
+lblColor.TextSize               = 11
+lblColor.TextXAlignment         = Enum.TextXAlignment.Left
+lblColor.ZIndex                 = 7
+lblColor.Parent                 = mainFrame
 
-local paletteGrid = Instance.new("Frame")
-paletteGrid.Size               = UDim2.new(1, -28, 0, 95)
-paletteGrid.Position           = UDim2.new(0, 14, 0, 266)
-paletteGrid.BackgroundTransparency = 1
-paletteGrid.ZIndex             = 6
-paletteGrid.Parent             = mainFrame
+local btnColorDropdown = Instance.new("TextButton")
+btnColorDropdown.Size             = UDim2.new(1, -28, 0, 28)
+btnColorDropdown.Position         = UDim2.new(0, 14, 0, 226)
+btnColorDropdown.BackgroundColor3 = Color3.fromRGB(35, 10, 18)
+btnColorDropdown.Text             = "  Selecione uma cor ▼"
+btnColorDropdown.TextColor3       = Color3.fromRGB(255, 255, 255)
+btnColorDropdown.Font             = Enum.Font.GothamSemibold
+btnColorDropdown.TextSize         = 11
+btnColorDropdown.TextXAlignment   = Enum.TextXAlignment.Left
+btnColorDropdown.BorderSizePixel  = 0
+btnColorDropdown.ZIndex           = 7
+btnColorDropdown.Parent           = mainFrame
+Instance.new("UICorner", btnColorDropdown).CornerRadius = UDim.new(0, 6)
 
-local gridLayout = Instance.new("UIGridLayout")
-gridLayout.CellSize = UDim2.new(0, 72, 0, 22)
-gridLayout.CellPadding = UDim2.new(0, 8, 0, 5)
-gridLayout.Parent = paletteGrid
+local colorDropContainer = Instance.new("Frame")
+colorDropContainer.Size                 = UDim2.new(1, -28, 0, 180)
+colorDropContainer.Position             = UDim2.new(0, 14, 0, 258)
+colorDropContainer.BackgroundColor3     = Color3.fromRGB(25, 8, 14)
+colorDropContainer.BorderSizePixel      = 0
+colorDropContainer.Visible              = false
+colorDropContainer.ZIndex               = 30
+colorDropContainer.Parent               = mainFrame
+Instance.new("UICorner", colorDropContainer).CornerRadius = UDim.new(0, 6)
+
+local cDropStroke = Instance.new("UIStroke")
+cDropStroke.Color = Color3.fromRGB(150, 30, 50)
+cDropStroke.Thickness = 1
+cDropStroke.Parent = colorDropContainer
+
+local colorListFrame = Instance.new("ScrollingFrame")
+colorListFrame.Size               = UDim2.new(1, -12, 1, -12)
+colorListFrame.Position           = UDim2.new(0, 6, 0, 6)
+colorListFrame.BackgroundTransparency = 1
+colorListFrame.BorderSizePixel    = 0
+colorListFrame.CanvasSize         = UDim2.new(0, 0, 0, #COLOR_PALETTE * 25)
+colorListFrame.ScrollBarThickness = 3
+colorListFrame.ZIndex             = 31
+colorListFrame.Parent             = colorDropContainer
+
+local colorListLayout = Instance.new("UIListLayout")
+colorListLayout.Padding = UDim.new(0, 3)
+colorListLayout.Parent = colorListFrame
 
 for _, item in ipairs(COLOR_PALETTE) do
     local cBtn = Instance.new("TextButton")
-    cBtn.Text             = item.Name
-    cBtn.BackgroundColor3 = item.Color
-    cBtn.TextColor3       = Color3.fromRGB(15, 15, 20)
+    cBtn.Size             = UDim2.new(1, -4, 0, 22)
+    cBtn.BackgroundColor3 = Color3.fromRGB(38, 12, 20)
+    cBtn.Text             = "  " .. item.Name
+    cBtn.TextColor3       = Color3.fromRGB(240, 240, 240)
     cBtn.Font             = Enum.Font.GothamBold
-    cBtn.TextSize         = 9.5
+    cBtn.TextSize         = 11
+    cBtn.TextXAlignment   = Enum.TextXAlignment.Left
     cBtn.BorderSizePixel  = 0
-    cBtn.ZIndex           = 8
-    cBtn.Parent           = paletteGrid
-    Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 5)
+    cBtn.ZIndex           = 32
+    cBtn.Parent           = colorListFrame
+    Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 4)
+
+    local colorDot = Instance.new("Frame")
+    colorDot.Size             = UDim2.new(0, 12, 0, 12)
+    colorDot.Position         = UDim2.new(1, -18, 0.5, -6)
+    colorDot.BackgroundColor3 = item.Color
+    colorDot.BorderSizePixel  = 0
+    colorDot.ZIndex           = 33
+    colorDot.Parent           = cBtn
+    Instance.new("UICorner", colorDot).CornerRadius = UDim.new(1, 0)
 
     cBtn.MouseButton1Click:Connect(function()
         if selectedPlayer then
             local data = getPlayerData(selectedPlayer)
             data.Color = item.Color
-            saveConfig() -- Salva a nova cor
+            saveConfig()
+            btnColorDropdown.Text = "  Cor: " .. item.Name .. " ▼"
         end
+        colorDropContainer.Visible = false
     end)
 end
 
+btnColorDropdown.MouseButton1Click:Connect(function()
+    colorDropContainer.Visible = not colorDropContainer.Visible
+end)
+
 -- Rodapé
 local hint = Instance.new("TextLabel")
-hint.Size               = UDim2.new(1, 0, 0, 20)
-hint.Position           = UDim2.new(0, 0, 1, -22)
+hint.Size                   = UDim2.new(1, 0, 0, 20)
+hint.Position               = UDim2.new(0, 0, 1, -22)
 hint.BackgroundTransparency = 1
-hint.Text               = "[RightShift] Ocultar / Mostrar Menu"
-hint.TextColor3         = Color3.fromRGB(160, 100, 110)
-hint.Font               = Enum.Font.Gotham
-hint.TextSize           = 11
-hint.ZIndex             = 6
-hint.Parent             = mainFrame
+hint.Text                   = "[RightShift] Ocultar / Mostrar Menu"
+hint.TextColor3             = Color3.fromRGB(160, 100, 110)
+hint.Font                   = Enum.Font.Gotham
+hint.TextSize               = 11
+hint.ZIndex                 = 6
+hint.Parent                 = mainFrame
 
 -- ==================== Hotkeys ====================
 UserInputService.InputBegan:Connect(function(input, gp)
