@@ -4,13 +4,29 @@ local RunService       = game:GetService("RunService")
 local Players          = game:GetService("Players")
 local HttpService      = game:GetService("HttpService")
 local TweenService     = game:GetService("TweenService")
+local Lighting         = game:GetService("Lighting")
 local LocalPlayer      = Players.LocalPlayer
 local Camera           = workspace.CurrentCamera
 
 -- ==================== Config Global & Save System ====================
-local ESPNameEnabled = true
-local ESPAuraEnabled = true
-local SAVE_FILE_NAME = "KisaragiEyes_Data.json"
+local ESPNameEnabled   = true
+local ESPAuraEnabled   = true
+local BlindnessEnabled = false
+local SAVE_FILE_NAME   = "KisaragiEyes_Data.json"
+
+-- Backup de configurações originais do Lighting
+local originalLighting = {
+    ClockTime      = Lighting.ClockTime,
+    Brightness     = Lighting.Brightness,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
+    Ambient        = Lighting.Ambient,
+    GlobalShadows  = Lighting.GlobalShadows,
+    FogStart       = Lighting.FogStart,
+    FogEnd         = Lighting.FogEnd,
+    FogColor       = Lighting.FogColor
+}
+
+local colorCorrection = nil
 
 -- [UserId] = { Color = {r, g, b}, CustomName = string }
 local playerData = {}
@@ -48,6 +64,97 @@ local function loadConfig()
 end
 
 loadConfig()
+
+-- ==================== Aura Própria (Vermelho Vinho) ====================
+local function updateSelfAura(enable)
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local selfHighlight = char:FindFirstChild("KisaragiSelfAura")
+    if enable then
+        if not selfHighlight then
+            selfHighlight = Instance.new("Highlight")
+            selfHighlight.Name = "KisaragiSelfAura"
+            selfHighlight.Adornee = char
+            selfHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            selfHighlight.FillTransparency = 0.5
+            selfHighlight.OutlineTransparency = 0.0
+            selfHighlight.Parent = char
+        end
+        -- Cor Vermelho Vinho elegante
+        local vinhoColor = Color3.fromRGB(115, 10, 30)
+        selfHighlight.FillColor = vinhoColor
+        selfHighlight.OutlineColor = vinhoColor
+        selfHighlight.Enabled = true
+    else
+        if selfHighlight then
+            selfHighlight:Destroy()
+        end
+    end
+end
+
+-- ==================== Sistema de Cegueira ====================
+local function setBlindnessMode(enable)
+    BlindnessEnabled = enable
+
+    if enable then
+        -- Salva o estado original do Lighting
+        originalLighting.ClockTime      = Lighting.ClockTime
+        originalLighting.Brightness     = Lighting.Brightness
+        originalLighting.OutdoorAmbient = Lighting.OutdoorAmbient
+        originalLighting.Ambient        = Lighting.Ambient
+        originalLighting.GlobalShadows  = Lighting.GlobalShadows
+        originalLighting.FogStart       = Lighting.FogStart
+        originalLighting.FogEnd         = Lighting.FogEnd
+        originalLighting.FogColor       = Lighting.FogColor
+
+        -- Deixa a iluminação do mapa em preto total
+        Lighting.ClockTime      = 0
+        Lighting.Brightness     = 0
+        Lighting.OutdoorAmbient = Color3.fromRGB(0, 0, 0)
+        Lighting.Ambient        = Color3.fromRGB(0, 0, 0)
+        Lighting.GlobalShadows  = true
+        Lighting.FogStart       = 0
+        Lighting.FogEnd         = 1
+        Lighting.FogColor       = Color3.fromRGB(0, 0, 0)
+
+        if not colorCorrection then
+            colorCorrection = Instance.new("ColorCorrectionEffect")
+            colorCorrection.Name = "KisaragiBlindnessCC"
+            colorCorrection.Brightness = -1
+            colorCorrection.Contrast = 1
+            colorCorrection.Saturation = -1
+            colorCorrection.TintColor = Color3.fromRGB(0, 0, 0)
+            colorCorrection.Parent = Lighting
+        end
+        colorCorrection.Enabled = true
+
+        updateSelfAura(true)
+    else
+        -- Restaura as configurações originais
+        Lighting.ClockTime      = originalLighting.ClockTime
+        Lighting.Brightness     = originalLighting.Brightness
+        Lighting.OutdoorAmbient = originalLighting.OutdoorAmbient
+        Lighting.Ambient        = originalLighting.Ambient
+        Lighting.GlobalShadows  = originalLighting.GlobalShadows
+        Lighting.FogStart       = originalLighting.FogStart
+        Lighting.FogEnd         = originalLighting.FogEnd
+        Lighting.FogColor       = originalLighting.FogColor
+
+        if colorCorrection then
+            colorCorrection.Enabled = false
+        end
+
+        updateSelfAura(false)
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if BlindnessEnabled then
+        updateSelfAura(true)
+    end
+end)
 
 -- ==================== Tabela de Cores Deduplicada ====================
 local COLOR_PALETTE = {
@@ -274,8 +381,8 @@ screenGui.Parent         = LocalPlayer:WaitForChild("PlayerGui")
 
 -- ==================== Main Frame ====================
 local mainFrame = Instance.new("Frame")
-mainFrame.Size                 = UDim2.new(0, 340, 0, 480)
-mainFrame.Position             = UDim2.new(0.5, -170, 0.5, -240)
+mainFrame.Size                 = UDim2.new(0, 340, 0, 520)
+mainFrame.Position             = UDim2.new(0.5, -170, 0.5, -260)
 mainFrame.BackgroundColor3     = Color3.fromRGB(22, 6, 12)
 mainFrame.BackgroundTransparency = 0.15
 mainFrame.BorderSizePixel          = 0
@@ -409,10 +516,14 @@ createSwitch(mainFrame, "Exibir Aura Visual", ESPAuraEnabled, 84, function(val)
     ESPAuraEnabled = val
 end)
 
+createSwitch(mainFrame, "Cegueira / Visão Noturna", BlindnessEnabled, 116, function(val)
+    setBlindnessMode(val)
+end)
+
 -- ==================== Dropdown 1: Seleção de Jogador ====================
 local lblSelectPlayer = Instance.new("TextLabel")
 lblSelectPlayer.Size                   = UDim2.new(1, -28, 0, 16)
-lblSelectPlayer.Position               = UDim2.new(0, 14, 0, 118)
+lblSelectPlayer.Position               = UDim2.new(0, 14, 0, 150)
 lblSelectPlayer.BackgroundTransparency = 1
 lblSelectPlayer.Text                   = "Jogador Selecionado:"
 lblSelectPlayer.TextColor3             = Color3.fromRGB(200, 160, 170)
@@ -424,7 +535,7 @@ lblSelectPlayer.Parent                 = mainFrame
 
 local btnPlayerDropdown = Instance.new("TextButton")
 btnPlayerDropdown.Size             = UDim2.new(1, -28, 0, 28)
-btnPlayerDropdown.Position         = UDim2.new(0, 14, 0, 136)
+btnPlayerDropdown.Position         = UDim2.new(0, 14, 0, 168)
 btnPlayerDropdown.BackgroundColor3 = Color3.fromRGB(35, 10, 18)
 btnPlayerDropdown.Text             = "  Clique para escolher um jogador ▼"
 btnPlayerDropdown.TextColor3       = Color3.fromRGB(255, 255, 255)
@@ -438,7 +549,7 @@ Instance.new("UICorner", btnPlayerDropdown).CornerRadius = UDim.new(0, 6)
 
 local playerDropContainer = Instance.new("Frame")
 playerDropContainer.Size                 = UDim2.new(1, -28, 0, 145)
-playerDropContainer.Position             = UDim2.new(0, 14, 0, 168)
+playerDropContainer.Position             = UDim2.new(0, 14, 0, 200)
 playerDropContainer.BackgroundColor3     = Color3.fromRGB(25, 8, 14)
 playerDropContainer.BorderSizePixel      = 0
 playerDropContainer.Visible              = false
@@ -483,6 +594,7 @@ listLayout.Parent = playerListFrame
 
 local playerButtons = {}
 local boxRename = nil
+local btnColorDropdown = nil
 local updatePlayerList = nil
 
 updatePlayerList = function()
@@ -542,7 +654,7 @@ task.defer(updatePlayerList)
 -- ==================== Edição de Apelido ====================
 local rowRename = Instance.new("Frame")
 rowRename.Size                   = UDim2.new(1, -28, 0, 28)
-rowRename.Position               = UDim2.new(0, 14, 0, 172)
+rowRename.Position               = UDim2.new(0, 14, 0, 204)
 rowRename.BackgroundTransparency = 1
 rowRename.ZIndex                 = 6
 rowRename.Parent                 = mainFrame
@@ -585,7 +697,7 @@ end)
 -- ==================== Dropdown 2: Seleção de Cor ====================
 local lblColor = Instance.new("TextLabel")
 lblColor.Size                   = UDim2.new(1, -28, 0, 16)
-lblColor.Position               = UDim2.new(0, 14, 0, 208)
+lblColor.Position               = UDim2.new(0, 14, 0, 240)
 lblColor.BackgroundTransparency = 1
 lblColor.Text                   = "Cor da Aura:"
 lblColor.TextColor3             = Color3.fromRGB(200, 160, 170)
@@ -595,9 +707,9 @@ lblColor.TextXAlignment         = Enum.TextXAlignment.Left
 lblColor.ZIndex                 = 7
 lblColor.Parent                 = mainFrame
 
-local btnColorDropdown = Instance.new("TextButton")
+btnColorDropdown = Instance.new("TextButton")
 btnColorDropdown.Size             = UDim2.new(1, -28, 0, 28)
-btnColorDropdown.Position         = UDim2.new(0, 14, 0, 226)
+btnColorDropdown.Position         = UDim2.new(0, 14, 0, 258)
 btnColorDropdown.BackgroundColor3 = Color3.fromRGB(35, 10, 18)
 btnColorDropdown.Text             = "  Selecione uma cor ▼"
 btnColorDropdown.TextColor3       = Color3.fromRGB(255, 255, 255)
@@ -611,7 +723,7 @@ Instance.new("UICorner", btnColorDropdown).CornerRadius = UDim.new(0, 6)
 
 local colorDropContainer = Instance.new("Frame")
 colorDropContainer.Size                 = UDim2.new(1, -28, 0, 180)
-colorDropContainer.Position             = UDim2.new(0, 14, 0, 258)
+colorDropContainer.Position             = UDim2.new(0, 14, 0, 290)
 colorDropContainer.BackgroundColor3     = Color3.fromRGB(25, 8, 14)
 colorDropContainer.BorderSizePixel      = 0
 colorDropContainer.Visible              = false
@@ -638,13 +750,13 @@ local colorListLayout = Instance.new("UIListLayout")
 colorListLayout.Padding = UDim.new(0, 3)
 colorListLayout.Parent = colorListFrame
 
-for _, item in ipairs(COLOR_PALETTE) do
+for _, cInfo in ipairs(COLOR_PALETTE) do
     local cBtn = Instance.new("TextButton")
     cBtn.Size             = UDim2.new(1, -4, 0, 22)
-    cBtn.BackgroundColor3 = Color3.fromRGB(38, 12, 20)
-    cBtn.Text             = "  " .. item.Name
-    cBtn.TextColor3       = Color3.fromRGB(240, 240, 240)
-    cBtn.Font             = Enum.Font.GothamBold
+    cBtn.BackgroundColor3 = Color3.fromRGB(45, 12, 22)
+    cBtn.Text             = "  " .. cInfo.Name
+    cBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
+    cBtn.Font             = Enum.Font.Gotham
     cBtn.TextSize         = 11
     cBtn.TextXAlignment   = Enum.TextXAlignment.Left
     cBtn.BorderSizePixel  = 0
@@ -652,23 +764,23 @@ for _, item in ipairs(COLOR_PALETTE) do
     cBtn.Parent           = colorListFrame
     Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 4)
 
-    local colorDot = Instance.new("Frame")
-    colorDot.Size             = UDim2.new(0, 12, 0, 12)
-    colorDot.Position         = UDim2.new(1, -18, 0.5, -6)
-    colorDot.BackgroundColor3 = item.Color
-    colorDot.BorderSizePixel  = 0
-    colorDot.ZIndex           = 33
-    colorDot.Parent           = cBtn
-    Instance.new("UICorner", colorDot).CornerRadius = UDim.new(1, 0)
+    local preview = Instance.new("Frame")
+    preview.Size             = UDim2.new(0, 14, 0, 14)
+    preview.Position         = UDim2.new(1, -20, 0.5, -7)
+    preview.BackgroundColor3 = cInfo.Color
+    preview.BorderSizePixel  = 0
+    preview.ZIndex           = 33
+    preview.Parent           = cBtn
+    Instance.new("UICorner", preview).CornerRadius = UDim.new(0, 3)
 
     cBtn.MouseButton1Click:Connect(function()
         if selectedPlayer then
             local data = getPlayerData(selectedPlayer)
-            data.Color = item.Color
+            data.Color = cInfo.Color
             saveConfig()
-            btnColorDropdown.Text = "  Cor: " .. item.Name .. " ▼"
+            btnColorDropdown.Text = "  " .. cInfo.Name .. " ▼"
+            colorDropContainer.Visible = false
         end
-        colorDropContainer.Visible = false
     end)
 end
 
@@ -688,7 +800,7 @@ hint.TextSize               = 11
 hint.ZIndex                 = 6
 hint.Parent                 = mainFrame
 
--- ==================== Hotkeys ====================
+-- Hotkey Hide/Show
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.RightShift then
