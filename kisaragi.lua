@@ -84,6 +84,140 @@ end
 
 loadConfig()
 
+-- ==================== Sistema de Partículas Fluorescentes (Profundidade/Branco) ====================
+local particleContainer = Instance.new("Folder")
+particleContainer.Name = "KisaragiParticles"
+
+local activeParticles = {}
+local PARTICLE_COUNT = 65 -- Quantidade ideal de esferas delicadas
+
+local function clearParticles()
+    for _, p in ipairs(activeParticles) do
+        if p.Frame then p.Frame:Destroy() end
+    end
+    activeParticles = {}
+    particleContainer:ClearAllChildren()
+end
+
+local function setParticleMovement(pData)
+    local angle = math.random() * math.pi * 2 -- Direção 360º aleatória
+    
+    -- Velocidade ajustada em Pixels Por Segundo (independente de FPS)
+    local baseSpeed = math.random(15, 35) / 10 -- 1.5 a 3.5 px/s de base
+    
+    -- Multiplicador baseado na profundidade (Mais longe = Mais lento)
+    local depthMult = (pData.Depth == 1) and 1 or (pData.Depth == 2 and 2.5 or 4)
+    local finalSpeed = baseSpeed * depthMult
+    
+    pData.SpeedX = math.cos(angle) * finalSpeed
+    pData.SpeedY = math.sin(angle) * finalSpeed
+end
+
+local function createParticle(guiHolder)
+    local viewportSize = Camera.ViewportSize
+    if viewportSize.X == 0 or viewportSize.Y == 0 then return end
+
+    -- Camadas de profundidade: 1 = Longe (pequeno, lento), 2 = Média, 3 = Perto (maior, rápido)
+    local depth = math.random(1, 3)
+    local sizeMap = { [1] = math.random(1, 2), [2] = math.random(2, 3), [3] = math.random(4, 5) }
+    local size = sizeMap[depth]
+
+    local startX = math.random(30, math.max(31, viewportSize.X - 30))
+    local startY = math.random(30, math.max(31, viewportSize.Y - 30))
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, size, 0, size)
+    frame.Position = UDim2.new(0, startX, 0, startY)
+    frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- Branco Puro Florescente
+    
+    local alphaMap = { [1] = 0.5, [2] = 0.25, [3] = 0.05 }
+    frame.BackgroundTransparency = alphaMap[depth]
+    frame.BorderSizePixel = 0
+    frame.ZIndex = depth
+    frame.Parent = particleContainer
+
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(1, 0)
+
+    -- Halo / Brilho Neon Fluorescente Branco
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = (depth == 3) and 1.8 or 1.0
+    stroke.Parent = frame
+
+    local pData = {
+        Frame = frame,
+        Stroke = stroke,
+        Depth = depth,
+        ExactX = startX, -- Armazena a posição exata em decimais
+        ExactY = startY,
+        PulseSpeed = math.random(10, 30) / 10,
+        BaseTransparency = frame.BackgroundTransparency,
+        Seed = math.random(1, 1000)
+    }
+    setParticleMovement(pData)
+    
+    table.insert(activeParticles, pData)
+end
+
+local function setupParticles(guiHolder)
+    clearParticles()
+    particleContainer.Parent = guiHolder
+    for i = 1, PARTICLE_COUNT do
+        createParticle(guiHolder)
+    end
+end
+
+-- Loop de animação das partículas usando dt (DeltaTime) para FPS constante
+RunService.RenderStepped:Connect(function(dt)
+    if not BlindnessEnabled then return end
+
+    local viewportSize = Camera.ViewportSize
+    local edgeMargin = 30 -- Distância da borda para começar a sumir
+
+    for _, p in ipairs(activeParticles) do
+        if p.Frame and p.Frame.Parent then
+            -- Adiciona a velocidade com base no tempo passado (dt)
+            p.ExactX = p.ExactX + (p.SpeedX * dt)
+            p.ExactY = p.ExactY + (p.SpeedY * dt)
+
+            -- Atualiza a posição visual
+            p.Frame.Position = UDim2.new(0, math.floor(p.ExactX), 0, math.floor(p.ExactY))
+
+            -- Calcula a distância para a borda mais próxima
+            local distTop = p.ExactY
+            local distBottom = viewportSize.Y - p.ExactY
+            local distLeft = p.ExactX
+            local distRight = viewportSize.X - p.ExactX
+            
+            local minEdgeDist = math.min(distTop, distBottom, distLeft, distRight)
+            
+            -- edgeAlpha = 1 (Centro da tela), edgeAlpha = 0 (Na borda)
+            local edgeAlpha = math.clamp(minEdgeDist / edgeMargin, 0, 1)
+
+            -- Pulsação suave padrão
+            local pulse = (math.sin(tick() * p.PulseSpeed + p.Seed) + 1) / 2
+            local alphaOffset = (p.Depth == 1) and 0.35 or 0.2
+            
+            -- Mistura a Transparência da Pulsação com o Efeito da Borda
+            local baseT = math.clamp(p.BaseTransparency + (pulse * alphaOffset), 0.0, 0.95)
+            local finalT = 1 - ((1 - baseT) * edgeAlpha) 
+
+            p.Frame.BackgroundTransparency = finalT
+            if p.Stroke then
+                p.Stroke.Transparency = math.clamp(finalT + 0.1, 0, 1) 
+            end
+
+            -- Se saiu completamente da tela (fade-out completado)
+            if minEdgeDist < -5 then
+                p.ExactX = math.random(edgeMargin, math.max(edgeMargin + 1, viewportSize.X - edgeMargin))
+                p.ExactY = math.random(edgeMargin, math.max(edgeMargin + 1, viewportSize.Y - edgeMargin))
+                p.Frame.Position = UDim2.new(0, math.floor(p.ExactX), 0, math.floor(p.ExactY))
+                setParticleMovement(p) -- Sorteia nova rota e velocidade suave
+            end
+        end
+    end
+end)
+
 -- ==================== Aura Própria (Cegueira) ====================
 local function updateSelfAura(enable)
     local char = LocalPlayer.Character
@@ -111,6 +245,8 @@ local function updateSelfAura(enable)
 end
 
 -- ==================== Sistema de Cegueira ====================
+local screenGui = nil
+
 local function setBlindnessMode(enable)
     BlindnessEnabled = enable
 
@@ -145,6 +281,9 @@ local function setBlindnessMode(enable)
         colorCorrection.Enabled = true
 
         updateSelfAura(true)
+        if screenGui then
+            setupParticles(screenGui)
+        end
     else
         Lighting.ClockTime      = originalLighting.ClockTime
         Lighting.Brightness     = originalLighting.Brightness
@@ -160,6 +299,7 @@ local function setBlindnessMode(enable)
         end
 
         updateSelfAura(false)
+        clearParticles()
     end
 end
 
@@ -459,9 +599,10 @@ Players.PlayerRemoving:Connect(function(p)
 end)
 
 -- ==================== ScreenGui ====================
-local screenGui = Instance.new("ScreenGui")
+screenGui = Instance.new("ScreenGui")
 screenGui.Name           = "KisaragiEyes_Gui"
 screenGui.ResetOnSpawn   = false
+screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent         = guiParent
 
@@ -711,7 +852,7 @@ local function populateSelfColorList()
         varContainer.BackgroundTransparency = 1
         varContainer.BorderSizePixel = 0
         varContainer.ZIndex = 37
-        varContainer.Visible = false -- Começa fechado
+        varContainer.Visible = false
         varContainer.Parent = selfColorListFrame
 
         local varLayout = Instance.new("UIListLayout")
@@ -760,7 +901,7 @@ local function populateSelfColorList()
             end)
         end
 
-        local isExpanded = false -- Começa fechado
+        local isExpanded = false
         catHeader.MouseButton1Click:Connect(function()
             isExpanded = not isExpanded
             varContainer.Visible = isExpanded
@@ -1056,7 +1197,7 @@ local function populatePlayerColorList()
         varContainer.BackgroundTransparency = 1
         varContainer.BorderSizePixel = 0
         varContainer.ZIndex = 32
-        varContainer.Visible = false -- Começa fechado
+        varContainer.Visible = false
         varContainer.Parent = playerColorListFrame
 
         local varLayout = Instance.new("UIListLayout")
@@ -1105,7 +1246,7 @@ local function populatePlayerColorList()
             end)
         end
 
-        local isExpanded = false -- Começa fechado
+        local isExpanded = false
         catHeader.MouseButton1Click:Connect(function()
             isExpanded = not isExpanded
             varContainer.Visible = isExpanded
