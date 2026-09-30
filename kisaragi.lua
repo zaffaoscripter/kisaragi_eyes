@@ -688,7 +688,7 @@ local function populateSelfColorList()
         local catHeader = Instance.new("TextButton")
         catHeader.Size = UDim2.new(1, -4, 0, 26)
         catHeader.BackgroundColor3 = Color3.fromRGB(42, 12, 22)
-        catHeader.Text = "  ▼ " .. categoryData.Category
+        catHeader.Text = "  ▶ " .. categoryData.Category
         catHeader.TextColor3 = Color3.fromRGB(255, 220, 225)
         catHeader.Font = Enum.Font.GothamBold
         catHeader.TextSize = 11
@@ -711,7 +711,7 @@ local function populateSelfColorList()
         varContainer.BackgroundTransparency = 1
         varContainer.BorderSizePixel = 0
         varContainer.ZIndex = 37
-        varContainer.Visible = true
+        varContainer.Visible = false -- Começa fechado
         varContainer.Parent = selfColorListFrame
 
         local varLayout = Instance.new("UIListLayout")
@@ -760,7 +760,7 @@ local function populateSelfColorList()
             end)
         end
 
-        local isExpanded = true
+        local isExpanded = false -- Começa fechado
         catHeader.MouseButton1Click:Connect(function()
             isExpanded = not isExpanded
             varContainer.Visible = isExpanded
@@ -1033,7 +1033,7 @@ local function populatePlayerColorList()
         local catHeader = Instance.new("TextButton")
         catHeader.Size = UDim2.new(1, -4, 0, 26)
         catHeader.BackgroundColor3 = Color3.fromRGB(42, 12, 22)
-        catHeader.Text = "  ▼ " .. categoryData.Category
+        catHeader.Text = "  ▶ " .. categoryData.Category
         catHeader.TextColor3 = Color3.fromRGB(255, 220, 225)
         catHeader.Font = Enum.Font.GothamBold
         catHeader.TextSize = 11
@@ -1056,7 +1056,7 @@ local function populatePlayerColorList()
         varContainer.BackgroundTransparency = 1
         varContainer.BorderSizePixel = 0
         varContainer.ZIndex = 32
-        varContainer.Visible = true
+        varContainer.Visible = false -- Começa fechado
         varContainer.Parent = playerColorListFrame
 
         local varLayout = Instance.new("UIListLayout")
@@ -1105,7 +1105,7 @@ local function populatePlayerColorList()
             end)
         end
 
-        local isExpanded = true
+        local isExpanded = false -- Começa fechado
         catHeader.MouseButton1Click:Connect(function()
             isExpanded = not isExpanded
             varContainer.Visible = isExpanded
