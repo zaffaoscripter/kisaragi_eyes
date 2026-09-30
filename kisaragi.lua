@@ -1,17 +1,27 @@
+-- ==================== Anti-Re-Execution Check ====================
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local guiParent = (gethui and gethui()) or LocalPlayer:WaitForChild("PlayerGui")
+if guiParent:FindFirstChild("KisaragiEyes_Gui") then
+    warn("[Kisaragi Eyes]: O script já está em execução! Cancelando duplicada.")
+    return
+end
+
 -- ==================== Services ====================
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
-local Players          = game:GetService("Players")
 local HttpService      = game:GetService("HttpService")
 local TweenService     = game:GetService("TweenService")
 local Lighting         = game:GetService("Lighting")
-local LocalPlayer      = Players.LocalPlayer
 local Camera           = workspace.CurrentCamera
 
 -- ==================== Config Global & Save System ====================
 local ESPNameEnabled   = true
 local ESPAuraEnabled   = true
 local BlindnessEnabled = false
+local SelfAuraColor    = Color3.fromRGB(115, 10, 30) -- Cor padrão do personagem (Vinho)
 local SAVE_FILE_NAME   = "KisaragiEyes_Data.json"
 
 -- Backup de configurações originais do Lighting
@@ -28,15 +38,18 @@ local originalLighting = {
 
 local colorCorrection = nil
 
--- [UserId] = { Color = {r, g, b}, CustomName = string }
+-- [UserId] = { Color = Color3, CustomName = string }
 local playerData = {}
 
 local function saveConfig()
     if writefile then
         pcall(function()
-            local rawData = {}
+            local rawData = {
+                SelfAuraColor = { SelfAuraColor.R, SelfAuraColor.G, SelfAuraColor.B },
+                Players = {}
+            }
             for userId, data in pairs(playerData) do
-                rawData[tostring(userId)] = {
+                rawData.Players[tostring(userId)] = {
                     Color = { data.Color.R, data.Color.G, data.Color.B },
                     CustomName = data.CustomName
                 }
@@ -50,7 +63,13 @@ local function loadConfig()
     if readfile and isfile and isfile(SAVE_FILE_NAME) then
         pcall(function()
             local decoded = HttpService:JSONDecode(readfile(SAVE_FILE_NAME))
-            for userIdStr, data in pairs(decoded) do
+            
+            if decoded.SelfAuraColor then
+                SelfAuraColor = Color3.new(decoded.SelfAuraColor[1], decoded.SelfAuraColor[2], decoded.SelfAuraColor[3])
+            end
+
+            local playersList = decoded.Players or decoded
+            for userIdStr, data in pairs(playersList) do
                 local uid = tonumber(userIdStr)
                 if uid and data.Color then
                     playerData[uid] = {
@@ -65,7 +84,7 @@ end
 
 loadConfig()
 
--- ==================== Aura Própria (Vermelho Vinho) ====================
+-- ==================== Aura Própria (Cegueira) ====================
 local function updateSelfAura(enable)
     local char = LocalPlayer.Character
     if not char then return end
@@ -81,10 +100,8 @@ local function updateSelfAura(enable)
             selfHighlight.OutlineTransparency = 0.0
             selfHighlight.Parent = char
         end
-        -- Cor Vermelho Vinho elegante
-        local vinhoColor = Color3.fromRGB(115, 10, 30)
-        selfHighlight.FillColor = vinhoColor
-        selfHighlight.OutlineColor = vinhoColor
+        selfHighlight.FillColor = SelfAuraColor
+        selfHighlight.OutlineColor = SelfAuraColor
         selfHighlight.Enabled = true
     else
         if selfHighlight then
@@ -98,7 +115,6 @@ local function setBlindnessMode(enable)
     BlindnessEnabled = enable
 
     if enable then
-        -- Salva o estado original do Lighting
         originalLighting.ClockTime      = Lighting.ClockTime
         originalLighting.Brightness     = Lighting.Brightness
         originalLighting.OutdoorAmbient = Lighting.OutdoorAmbient
@@ -108,7 +124,6 @@ local function setBlindnessMode(enable)
         originalLighting.FogEnd         = Lighting.FogEnd
         originalLighting.FogColor       = Lighting.FogColor
 
-        -- Deixa a iluminação do mapa em preto total
         Lighting.ClockTime      = 0
         Lighting.Brightness     = 0
         Lighting.OutdoorAmbient = Color3.fromRGB(0, 0, 0)
@@ -131,7 +146,6 @@ local function setBlindnessMode(enable)
 
         updateSelfAura(true)
     else
-        -- Restaura as configurações originais
         Lighting.ClockTime      = originalLighting.ClockTime
         Lighting.Brightness     = originalLighting.Brightness
         Lighting.OutdoorAmbient = originalLighting.OutdoorAmbient
@@ -156,85 +170,157 @@ LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
--- ==================== Tabela de Cores Deduplicada ====================
-local COLOR_PALETTE = {
-    { Name = "Vermelho",        Color = Color3.fromRGB(255, 0, 0) },
-    { Name = "Azul",            Color = Color3.fromRGB(0, 120, 255) },
-    { Name = "Amarelo",         Color = Color3.fromRGB(255, 230, 0) },
-    { Name = "Verde",           Color = Color3.fromRGB(0, 220, 100) },
-    { Name = "Laranja",         Color = Color3.fromRGB(255, 130, 0) },
-    { Name = "Roxo",            Color = Color3.fromRGB(150, 40, 255) },
-    { Name = "Rosa",            Color = Color3.fromRGB(255, 105, 180) },
-    { Name = "Marrom",          Color = Color3.fromRGB(139, 69, 19) },
-    { Name = "Preto",           Color = Color3.fromRGB(20, 20, 25) },
-    { Name = "Branco",          Color = Color3.fromRGB(255, 255, 255) },
-    { Name = "Cinza",           Color = Color3.fromRGB(128, 128, 128) },
-    { Name = "Ciano",           Color = Color3.fromRGB(0, 230, 255) },
-    { Name = "Magenta",         Color = Color3.fromRGB(255, 0, 255) },
-    { Name = "Turquesa",        Color = Color3.fromRGB(64, 224, 208) },
-    { Name = "Índigo",          Color = Color3.fromRGB(75, 0, 130) },
-    { Name = "Violeta",         Color = Color3.fromRGB(170, 90, 255) },
-    { Name = "Anil",            Color = Color3.fromRGB(15, 82, 186) },
-    { Name = "Carmim",          Color = Color3.fromRGB(220, 20, 60) },
-    { Name = "Escarlate",       Color = Color3.fromRGB(255, 36, 0) },
-    { Name = "Bordô",           Color = Color3.fromRGB(128, 0, 32) },
-    { Name = "Borgonha",        Color = Color3.fromRGB(128, 0, 32) },
-    { Name = "Rubi",            Color = Color3.fromRGB(155, 17, 30) },
-    { Name = "Coral",           Color = Color3.fromRGB(255, 127, 80) },
-    { Name = "Salmão",          Color = Color3.fromRGB(250, 128, 114) },
-    { Name = "Pêssego",         Color = Color3.fromRGB(255, 218, 185) },
-    { Name = "Âmbar",           Color = Color3.fromRGB(255, 191, 0) },
-    { Name = "Ocre",            Color = Color3.fromRGB(204, 119, 34) },
-    { Name = "Mostarda",        Color = Color3.fromRGB(225, 173, 1) },
-    { Name = "Dourado",         Color = Color3.fromRGB(255, 215, 0) },
-    { Name = "Bronze",          Color = Color3.fromRGB(205, 127, 50) },
-    { Name = "Cobre",           Color = Color3.fromRGB(184, 115, 51) },
-    { Name = "Bege",            Color = Color3.fromRGB(245, 245, 220) },
-    { Name = "Creme",           Color = Color3.fromRGB(255, 253, 208) },
-    { Name = "Marfim",          Color = Color3.fromRGB(255, 255, 240) },
-    { Name = "Caqui",           Color = Color3.fromRGB(195, 176, 145) },
-    { Name = "Oliva",           Color = Color3.fromRGB(128, 128, 0) },
-    { Name = "Esmeralda",       Color = Color3.fromRGB(80, 200, 120) },
-    { Name = "Jade",            Color = Color3.fromRGB(0, 168, 107) },
-    { Name = "Menta",           Color = Color3.fromRGB(152, 251, 152) },
-    { Name = "Musgo",           Color = Color3.fromRGB(138, 154, 91) },
-    { Name = "Pistache",        Color = Color3.fromRGB(147, 197, 114) },
-    { Name = "Lima",            Color = Color3.fromRGB(191, 255, 0) },
-    { Name = "Chartreuse",      Color = Color3.fromRGB(127, 255, 0) },
-    { Name = "Água-marinha",    Color = Color3.fromRGB(127, 255, 212) },
-    { Name = "Safira",          Color = Color3.fromRGB(15, 82, 186) },
-    { Name = "Cobalto",         Color = Color3.fromRGB(0, 71, 171) },
-    { Name = "Cerúleo",         Color = Color3.fromRGB(42, 82, 190) },
-    { Name = "Ultramarino",     Color = Color3.fromRGB(18, 10, 143) },
-    { Name = "Azul-petróleo",   Color = Color3.fromRGB(0, 95, 105) },
-    { Name = "Lavanda",         Color = Color3.fromRGB(230, 230, 250) },
-    { Name = "Lilás",           Color = Color3.fromRGB(200, 162, 200) },
-    { Name = "Ameixa",          Color = Color3.fromRGB(221, 160, 221) },
-    { Name = "Ametista",        Color = Color3.fromRGB(153, 102, 204) },
-    { Name = "Púrpura",         Color = Color3.fromRGB(128, 0, 128) },
-    { Name = "Fúcsia",          Color = Color3.fromRGB(255, 0, 255) },
-    { Name = "Orquídea",        Color = Color3.fromRGB(218, 112, 214) },
-    { Name = "Malva",           Color = Color3.fromRGB(224, 176, 255) },
-    { Name = "Sépia",           Color = Color3.fromRGB(112, 66, 20) },
-    { Name = "Terracota",       Color = Color3.fromRGB(226, 114, 91) },
-    { Name = "Ferrugem",        Color = Color3.fromRGB(183, 65, 14) },
-    { Name = "Canela",          Color = Color3.fromRGB(210, 105, 30) },
-    { Name = "Caramelo",        Color = Color3.fromRGB(198, 115, 38) },
-    { Name = "Chocolate",       Color = Color3.fromRGB(123, 63, 0) },
-    { Name = "Café",            Color = Color3.fromRGB(111, 78, 55) },
-    { Name = "Mogno",           Color = Color3.fromRGB(192, 64, 0) },
-    { Name = "Ébano",           Color = Color3.fromRGB(40, 40, 45) },
-    { Name = "Siena",           Color = Color3.fromRGB(160, 82, 45) },
-    { Name = "Prata",           Color = Color3.fromRGB(192, 192, 192) },
-    { Name = "Platina",         Color = Color3.fromRGB(229, 228, 226) },
-    { Name = "Titânio",         Color = Color3.fromRGB(135, 134, 129) },
-    { Name = "Grafite",         Color = Color3.fromRGB(56, 56, 56) },
-    { Name = "Chumbo",          Color = Color3.fromRGB(80, 80, 90) },
-    { Name = "Pérola",          Color = Color3.fromRGB(240, 234, 214) },
-    { Name = "Opala",           Color = Color3.fromRGB(168, 195, 188) },
-    { Name = "Granada",         Color = Color3.fromRGB(131, 29, 28) },
-    { Name = "Topázio",         Color = Color3.fromRGB(255, 200, 124) },
-    { Name = "Obsidiana",       Color = Color3.fromRGB(27, 26, 31) },
+-- ==================== Paleta para Aura Própria (Categorias + Variações) ====================
+local SELF_COLOR_CATEGORIES = {
+    {
+        Category = "Vermelho",
+        MainColor = Color3.fromRGB(255, 0, 0),
+        Variations = {
+            { Name = "Vinho (Padrão)", Color = Color3.fromRGB(115, 10, 30) },
+            { Name = "Vermelho Puro",  Color = Color3.fromRGB(255, 0, 0) },
+            { Name = "Escarlate",      Color = Color3.fromRGB(255, 45, 0) },
+            { Name = "Carmim",         Color = Color3.fromRGB(180, 0, 40) },
+        }
+    },
+    {
+        Category = "Azul",
+        MainColor = Color3.fromRGB(0, 120, 255),
+        Variations = {
+            { Name = "Azul Principal", Color = Color3.fromRGB(0, 120, 255) },
+            { Name = "Azul Marinho",   Color = Color3.fromRGB(15, 30, 110) },
+            { Name = "Azul Ciano",     Color = Color3.fromRGB(0, 220, 255) },
+            { Name = "Azul Cobalto",   Color = Color3.fromRGB(20, 80, 200) },
+        }
+    },
+    {
+        Category = "Amarelo",
+        MainColor = Color3.fromRGB(255, 230, 0),
+        Variations = {
+            { Name = "Amarelo Principal", Color = Color3.fromRGB(255, 230, 0) },
+            { Name = "Dourado",           Color = Color3.fromRGB(255, 195, 0) },
+            { Name = "Amarelo Limão",     Color = Color3.fromRGB(230, 255, 50) },
+            { Name = "Âmbar",             Color = Color3.fromRGB(255, 140, 0) },
+        }
+    },
+    {
+        Category = "Verde",
+        MainColor = Color3.fromRGB(0, 220, 100),
+        Variations = {
+            { Name = "Verde Principal", Color = Color3.fromRGB(0, 220, 100) },
+            { Name = "Verde Esmeralda", Color = Color3.fromRGB(0, 180, 90) },
+            { Name = "Verde Menta",     Color = Color3.fromRGB(80, 255, 160) },
+            { Name = "Verde Musgo",     Color = Color3.fromRGB(30, 90, 40) },
+        }
+    },
+    {
+        Category = "Roxo",
+        MainColor = Color3.fromRGB(150, 40, 255),
+        Variations = {
+            { Name = "Roxo Principal", Color = Color3.fromRGB(150, 40, 255) },
+            { Name = "Violeta Escuro",  Color = Color3.fromRGB(80, 10, 160) },
+            { Name = "Lilás",           Color = Color3.fromRGB(200, 140, 255) },
+            { Name = "Magenta",         Color = Color3.fromRGB(230, 0, 180) },
+        }
+    },
+    {
+        Category = "Laranja",
+        MainColor = Color3.fromRGB(255, 130, 0),
+        Variations = {
+            { Name = "Laranja Principal", Color = Color3.fromRGB(255, 130, 0) },
+            { Name = "Laranja Fogo",      Color = Color3.fromRGB(255, 70, 0) },
+            { Name = "Pêssego",           Color = Color3.fromRGB(255, 170, 120) },
+            { Name = "Terracota",         Color = Color3.fromRGB(180, 75, 30) },
+        }
+    },
+    {
+        Category = "Neutro / Monocromático",
+        MainColor = Color3.fromRGB(255, 255, 255),
+        Variations = {
+            { Name = "Branco Puro", Color = Color3.fromRGB(255, 255, 255) },
+            { Name = "Platina",     Color = Color3.fromRGB(210, 215, 225) },
+            { Name = "Grafite",     Color = Color3.fromRGB(80, 80, 95) },
+            { Name = "Sombra",      Color = Color3.fromRGB(25, 20, 30) },
+        }
+    }
+}
+
+-- ==================== Paleta de Cores para Jogadores (Sanfona) ====================
+local PLAYER_COLOR_CATEGORIES = {
+    {
+        Category = "Vermelhos & Rosas",
+        MainColor = Color3.fromRGB(255, 0, 0),
+        Variations = {
+            { Name = "Vermelho",  Color = Color3.fromRGB(255, 0, 0) },
+            { Name = "Carmim",    Color = Color3.fromRGB(220, 20, 60) },
+            { Name = "Escarlate", Color = Color3.fromRGB(255, 36, 0) },
+            { Name = "Bordô",     Color = Color3.fromRGB(128, 0, 32) },
+            { Name = "Rubi",      Color = Color3.fromRGB(155, 17, 30) },
+            { Name = "Coral",     Color = Color3.fromRGB(255, 127, 80) },
+            { Name = "Salmão",    Color = Color3.fromRGB(250, 128, 114) },
+            { Name = "Rosa",      Color = Color3.fromRGB(255, 105, 180) },
+            { Name = "Magenta",   Color = Color3.fromRGB(255, 0, 255) },
+        }
+    },
+    {
+        Category = "Azuis & Cianos",
+        MainColor = Color3.fromRGB(0, 120, 255),
+        Variations = {
+            { Name = "Azul",     Color = Color3.fromRGB(0, 120, 255) },
+            { Name = "Ciano",    Color = Color3.fromRGB(0, 230, 255) },
+            { Name = "Turquesa", Color = Color3.fromRGB(64, 224, 208) },
+            { Name = "Safira",   Color = Color3.fromRGB(15, 82, 186) },
+            { Name = "Cobalto",  Color = Color3.fromRGB(0, 71, 171) },
+            { Name = "Anil",     Color = Color3.fromRGB(15, 82, 186) },
+        }
+    },
+    {
+        Category = "Verdes",
+        MainColor = Color3.fromRGB(0, 220, 100),
+        Variations = {
+            { Name = "Verde",     Color = Color3.fromRGB(0, 220, 100) },
+            { Name = "Esmeralda",Color = Color3.fromRGB(80, 200, 120) },
+            { Name = "Jade",      Color = Color3.fromRGB(0, 168, 107) },
+            { Name = "Menta",     Color = Color3.fromRGB(152, 251, 152) },
+            { Name = "Oliva",     Color = Color3.fromRGB(128, 128, 0) },
+        }
+    },
+    {
+        Category = "Amarelos & Laranjas",
+        MainColor = Color3.fromRGB(255, 230, 0),
+        Variations = {
+            { Name = "Amarelo", Color = Color3.fromRGB(255, 230, 0) },
+            { Name = "Laranja", Color = Color3.fromRGB(255, 130, 0) },
+            { Name = "Âmbar",   Color = Color3.fromRGB(255, 191, 0) },
+            { Name = "Dourado", Color = Color3.fromRGB(255, 215, 0) },
+            { Name = "Bronze",  Color = Color3.fromRGB(205, 127, 50) },
+            { Name = "Bege",    Color = Color3.fromRGB(245, 245, 220) },
+        }
+    },
+    {
+        Category = "Roxos & Violetas",
+        MainColor = Color3.fromRGB(150, 40, 255),
+        Variations = {
+            { Name = "Roxo",    Color = Color3.fromRGB(150, 40, 255) },
+            { Name = "Índigo",  Color = Color3.fromRGB(75, 0, 130) },
+            { Name = "Violeta", Color = Color3.fromRGB(170, 90, 255) },
+            { Name = "Lavanda", Color = Color3.fromRGB(230, 230, 250) },
+            { Name = "Lilás",   Color = Color3.fromRGB(200, 162, 200) },
+            { Name = "Púrpura", Color = Color3.fromRGB(128, 0, 128) },
+        }
+    },
+    {
+        Category = "Neutros & Tons Escuros",
+        MainColor = Color3.fromRGB(255, 255, 255),
+        Variations = {
+            { Name = "Branco",   Color = Color3.fromRGB(255, 255, 255) },
+            { Name = "Cinza",    Color = Color3.fromRGB(128, 128, 128) },
+            { Name = "Prata",    Color = Color3.fromRGB(192, 192, 192) },
+            { Name = "Grafite",  Color = Color3.fromRGB(56, 56, 56) },
+            { Name = "Preto",    Color = Color3.fromRGB(20, 20, 25) },
+            { Name = "Obsidiana",Color = Color3.fromRGB(27, 26, 31) },
+            { Name = "Marrom",   Color = Color3.fromRGB(139, 69, 19) },
+        }
+    }
 }
 
 local selectedPlayer = nil
@@ -377,12 +463,12 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name           = "KisaragiEyes_Gui"
 screenGui.ResetOnSpawn   = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent         = LocalPlayer:WaitForChild("PlayerGui")
+screenGui.Parent         = guiParent
 
 -- ==================== Main Frame ====================
 local mainFrame = Instance.new("Frame")
-mainFrame.Size                 = UDim2.new(0, 340, 0, 520)
-mainFrame.Position             = UDim2.new(0.5, -170, 0.5, -260)
+mainFrame.Size                 = UDim2.new(0, 340, 0, 430)
+mainFrame.Position             = UDim2.new(0.5, -170, 0.5, -215)
 mainFrame.BackgroundColor3     = Color3.fromRGB(22, 6, 12)
 mainFrame.BackgroundTransparency = 0.15
 mainFrame.BorderSizePixel          = 0
@@ -508,22 +594,196 @@ local function createSwitch(parent, labelText, initialValue, posY, callback)
     end)
 end
 
-createSwitch(mainFrame, "Exibir Nomes ESP", ESPNameEnabled, 52, function(val)
+createSwitch(mainFrame, "Exibir Nomes ESP", ESPNameEnabled, 50, function(val)
     ESPNameEnabled = val
 end)
 
-createSwitch(mainFrame, "Exibir Aura Visual", ESPAuraEnabled, 84, function(val)
+createSwitch(mainFrame, "Exibir Aura Visual", ESPAuraEnabled, 80, function(val)
     ESPAuraEnabled = val
 end)
 
-createSwitch(mainFrame, "Cegueira / Visão Noturna", BlindnessEnabled, 116, function(val)
+createSwitch(mainFrame, "Cegueira / Visão Noturna", BlindnessEnabled, 110, function(val)
     setBlindnessMode(val)
 end)
 
--- ==================== Dropdown 1: Seleção de Jogador ====================
+-- Referências para fechar gavetas automaticamente
+local selfColorDropContainer = nil
+local playerDropContainer    = nil
+local colorDropContainer     = nil
+
+-- ==================== Gaveta 1: Cor da Aura Própria (Cegueira) ====================
+local lblSelfColor = Instance.new("TextLabel")
+lblSelfColor.Size                   = UDim2.new(1, -28, 0, 16)
+lblSelfColor.Position               = UDim2.new(0, 14, 0, 142)
+lblSelfColor.BackgroundTransparency = 1
+lblSelfColor.Text                   = "Cor da Sua Aura (Cegueira):"
+lblSelfColor.TextColor3             = Color3.fromRGB(200, 160, 170)
+lblSelfColor.Font                   = Enum.Font.GothamSemibold
+lblSelfColor.TextSize               = 11
+lblSelfColor.TextXAlignment         = Enum.TextXAlignment.Left
+lblSelfColor.ZIndex                 = 7
+lblSelfColor.Parent                 = mainFrame
+
+local btnSelfColorDropdown = Instance.new("TextButton")
+btnSelfColorDropdown.Size             = UDim2.new(1, -28, 0, 28)
+btnSelfColorDropdown.Position         = UDim2.new(0, 14, 0, 160)
+btnSelfColorDropdown.BackgroundColor3 = Color3.fromRGB(35, 10, 18)
+btnSelfColorDropdown.Text             = "  Vinho (Padrão) ▼"
+btnSelfColorDropdown.TextColor3       = Color3.fromRGB(255, 255, 255)
+btnSelfColorDropdown.Font             = Enum.Font.GothamSemibold
+btnSelfColorDropdown.TextSize         = 11
+btnSelfColorDropdown.TextXAlignment   = Enum.TextXAlignment.Left
+btnSelfColorDropdown.BorderSizePixel  = 0
+btnSelfColorDropdown.ZIndex           = 7
+btnSelfColorDropdown.Parent           = mainFrame
+Instance.new("UICorner", btnSelfColorDropdown).CornerRadius = UDim.new(0, 6)
+
+selfColorDropContainer = Instance.new("Frame")
+selfColorDropContainer.Size                 = UDim2.new(1, -28, 0, 190)
+selfColorDropContainer.Position             = UDim2.new(0, 14, 0, 192)
+selfColorDropContainer.BackgroundColor3     = Color3.fromRGB(25, 8, 14)
+selfColorDropContainer.BorderSizePixel      = 0
+selfColorDropContainer.Visible              = false
+selfColorDropContainer.ZIndex               = 35
+selfColorDropContainer.Parent               = mainFrame
+Instance.new("UICorner", selfColorDropContainer).CornerRadius = UDim.new(0, 6)
+
+local scDropStroke = Instance.new("UIStroke")
+scDropStroke.Color = Color3.fromRGB(150, 30, 50)
+scDropStroke.Thickness = 1
+scDropStroke.Parent = selfColorDropContainer
+
+local selfColorListFrame = Instance.new("ScrollingFrame")
+selfColorListFrame.Size                = UDim2.new(1, -12, 1, -12)
+selfColorListFrame.Position            = UDim2.new(0, 6, 0, 6)
+selfColorListFrame.BackgroundTransparency = 1
+selfColorListFrame.BorderSizePixel    = 0
+selfColorListFrame.CanvasSize          = UDim2.new(0, 0, 0, 0)
+selfColorListFrame.ScrollBarThickness = 3
+selfColorListFrame.ZIndex              = 36
+selfColorListFrame.Parent              = selfColorDropContainer
+
+local selfCategoryFrames = {}
+
+local function updateSelfListCanvas()
+    local currentY = 0
+    for _, catGroup in ipairs(selfCategoryFrames) do
+        catGroup.Header.Position = UDim2.new(0, 2, 0, currentY)
+        currentY = currentY + 28
+        
+        if catGroup.Container.Visible then
+            catGroup.Container.Position = UDim2.new(0, 8, 0, currentY)
+            local containerHeight = #catGroup.Items * 25
+            catGroup.Container.Size = UDim2.new(1, -12, 0, containerHeight)
+            currentY = currentY + containerHeight + 4
+        else
+            currentY = currentY + 2
+        end
+    end
+    selfColorListFrame.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
+end
+
+local function populateSelfColorList()
+    for _, categoryData in ipairs(SELF_COLOR_CATEGORIES) do
+        local catHeader = Instance.new("TextButton")
+        catHeader.Size = UDim2.new(1, -4, 0, 26)
+        catHeader.BackgroundColor3 = Color3.fromRGB(42, 12, 22)
+        catHeader.Text = "  ▼ " .. categoryData.Category
+        catHeader.TextColor3 = Color3.fromRGB(255, 220, 225)
+        catHeader.Font = Enum.Font.GothamBold
+        catHeader.TextSize = 11
+        catHeader.TextXAlignment = Enum.TextXAlignment.Left
+        catHeader.BorderSizePixel = 0
+        catHeader.ZIndex = 37
+        catHeader.Parent = selfColorListFrame
+        Instance.new("UICorner", catHeader).CornerRadius = UDim.new(0, 4)
+
+        local catSample = Instance.new("Frame")
+        catSample.Size = UDim2.new(0, 12, 0, 12)
+        catSample.Position = UDim2.new(1, -22, 0.5, -6)
+        catSample.BackgroundColor3 = categoryData.MainColor
+        catSample.BorderSizePixel = 0
+        catSample.ZIndex = 38
+        catSample.Parent = catHeader
+        Instance.new("UICorner", catSample).CornerRadius = UDim.new(0, 3)
+
+        local varContainer = Instance.new("Frame")
+        varContainer.BackgroundTransparency = 1
+        varContainer.BorderSizePixel = 0
+        varContainer.ZIndex = 37
+        varContainer.Visible = true
+        varContainer.Parent = selfColorListFrame
+
+        local varLayout = Instance.new("UIListLayout")
+        varLayout.Padding = UDim.new(0, 2)
+        varLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        varLayout.Parent = varContainer
+
+        table.insert(selfCategoryFrames, {
+            Header = catHeader,
+            Container = varContainer,
+            Items = categoryData.Variations
+        })
+
+        for vIdx, varItem in ipairs(categoryData.Variations) do
+            local varBtn = Instance.new("TextButton")
+            varBtn.Size = UDim2.new(1, 0, 0, 23)
+            varBtn.BackgroundColor3 = Color3.fromRGB(22, 6, 12)
+            varBtn.Text = "        " .. varItem.Name
+            varBtn.TextColor3 = Color3.fromRGB(230, 230, 235)
+            varBtn.Font = Enum.Font.Gotham
+            varBtn.TextSize = 11
+            varBtn.TextXAlignment = Enum.TextXAlignment.Left
+            varBtn.BorderSizePixel = 0
+            varBtn.LayoutOrder = vIdx
+            varBtn.ZIndex = 38
+            varBtn.Parent = varContainer
+            Instance.new("UICorner", varBtn).CornerRadius = UDim.new(0, 4)
+
+            local sample = Instance.new("Frame")
+            sample.Size = UDim2.new(0, 10, 0, 10)
+            sample.Position = UDim2.new(0, 12, 0.5, -5)
+            sample.BackgroundColor3 = varItem.Color
+            sample.BorderSizePixel = 0
+            sample.ZIndex = 39
+            sample.Parent = varBtn
+            Instance.new("UICorner", sample).CornerRadius = UDim.new(0, 3)
+
+            varBtn.MouseButton1Click:Connect(function()
+                SelfAuraColor = varItem.Color
+                btnSelfColorDropdown.Text = "  " .. varItem.Name .. " ▼"
+                selfColorDropContainer.Visible = false
+                saveConfig()
+                if BlindnessEnabled then
+                    updateSelfAura(true)
+                end
+            end)
+        end
+
+        local isExpanded = true
+        catHeader.MouseButton1Click:Connect(function()
+            isExpanded = not isExpanded
+            varContainer.Visible = isExpanded
+            catHeader.Text = (isExpanded and "  ▼ " or "  ▶ ") .. categoryData.Category
+            updateSelfListCanvas()
+        end)
+    end
+
+    updateSelfListCanvas()
+end
+
+populateSelfColorList()
+
+btnSelfColorDropdown.MouseButton1Click:Connect(function()
+    if playerDropContainer then playerDropContainer.Visible = false end
+    if colorDropContainer then colorDropContainer.Visible = false end
+    selfColorDropContainer.Visible = not selfColorDropContainer.Visible
+end)
+
+-- ==================== Gaveta 2: Seleção de Jogador ====================
 local lblSelectPlayer = Instance.new("TextLabel")
 lblSelectPlayer.Size                   = UDim2.new(1, -28, 0, 16)
-lblSelectPlayer.Position               = UDim2.new(0, 14, 0, 150)
+lblSelectPlayer.Position               = UDim2.new(0, 14, 0, 196)
 lblSelectPlayer.BackgroundTransparency = 1
 lblSelectPlayer.Text                   = "Jogador Selecionado:"
 lblSelectPlayer.TextColor3             = Color3.fromRGB(200, 160, 170)
@@ -535,7 +795,7 @@ lblSelectPlayer.Parent                 = mainFrame
 
 local btnPlayerDropdown = Instance.new("TextButton")
 btnPlayerDropdown.Size             = UDim2.new(1, -28, 0, 28)
-btnPlayerDropdown.Position         = UDim2.new(0, 14, 0, 168)
+btnPlayerDropdown.Position         = UDim2.new(0, 14, 0, 214)
 btnPlayerDropdown.BackgroundColor3 = Color3.fromRGB(35, 10, 18)
 btnPlayerDropdown.Text             = "  Clique para escolher um jogador ▼"
 btnPlayerDropdown.TextColor3       = Color3.fromRGB(255, 255, 255)
@@ -547,9 +807,9 @@ btnPlayerDropdown.ZIndex           = 7
 btnPlayerDropdown.Parent           = mainFrame
 Instance.new("UICorner", btnPlayerDropdown).CornerRadius = UDim.new(0, 6)
 
-local playerDropContainer = Instance.new("Frame")
+playerDropContainer = Instance.new("Frame")
 playerDropContainer.Size                 = UDim2.new(1, -28, 0, 145)
-playerDropContainer.Position             = UDim2.new(0, 14, 0, 200)
+playerDropContainer.Position             = UDim2.new(0, 14, 0, 244)
 playerDropContainer.BackgroundColor3     = Color3.fromRGB(25, 8, 14)
 playerDropContainer.BorderSizePixel      = 0
 playerDropContainer.Visible              = false
@@ -562,7 +822,6 @@ pDropStroke.Color = Color3.fromRGB(150, 30, 50)
 pDropStroke.Thickness = 1
 pDropStroke.Parent = playerDropContainer
 
--- Caixa de Pesquisa
 local searchBox = Instance.new("TextBox")
 searchBox.Size             = UDim2.new(1, -12, 0, 24)
 searchBox.Position         = UDim2.new(0, 6, 0, 6)
@@ -643,7 +902,10 @@ updatePlayerList = function()
 end
 
 searchBox:GetPropertyChangedSignal("Text"):Connect(updatePlayerList)
+
 btnPlayerDropdown.MouseButton1Click:Connect(function()
+    selfColorDropContainer.Visible = false
+    if colorDropContainer then colorDropContainer.Visible = false end
     playerDropContainer.Visible = not playerDropContainer.Visible
 end)
 
@@ -654,7 +916,7 @@ task.defer(updatePlayerList)
 -- ==================== Edição de Apelido ====================
 local rowRename = Instance.new("Frame")
 rowRename.Size                   = UDim2.new(1, -28, 0, 28)
-rowRename.Position               = UDim2.new(0, 14, 0, 204)
+rowRename.Position               = UDim2.new(0, 14, 0, 250)
 rowRename.BackgroundTransparency = 1
 rowRename.ZIndex                 = 6
 rowRename.Parent                 = mainFrame
@@ -694,12 +956,12 @@ boxRename.FocusLost:Connect(function()
     end
 end)
 
--- ==================== Dropdown 2: Seleção de Cor ====================
+-- ==================== Gaveta 3: Cor da Aura (Jogadores Selecionados) ====================
 local lblColor = Instance.new("TextLabel")
 lblColor.Size                   = UDim2.new(1, -28, 0, 16)
-lblColor.Position               = UDim2.new(0, 14, 0, 240)
+lblColor.Position               = UDim2.new(0, 14, 0, 284)
 lblColor.BackgroundTransparency = 1
-lblColor.Text                   = "Cor da Aura:"
+lblColor.Text                   = "Cor da Aura do Jogador:"
 lblColor.TextColor3             = Color3.fromRGB(200, 160, 170)
 lblColor.Font                   = Enum.Font.GothamSemibold
 lblColor.TextSize               = 11
@@ -709,7 +971,7 @@ lblColor.Parent                 = mainFrame
 
 btnColorDropdown = Instance.new("TextButton")
 btnColorDropdown.Size             = UDim2.new(1, -28, 0, 28)
-btnColorDropdown.Position         = UDim2.new(0, 14, 0, 258)
+btnColorDropdown.Position         = UDim2.new(0, 14, 0, 302)
 btnColorDropdown.BackgroundColor3 = Color3.fromRGB(35, 10, 18)
 btnColorDropdown.Text             = "  Selecione uma cor ▼"
 btnColorDropdown.TextColor3       = Color3.fromRGB(255, 255, 255)
@@ -721,9 +983,9 @@ btnColorDropdown.ZIndex           = 7
 btnColorDropdown.Parent           = mainFrame
 Instance.new("UICorner", btnColorDropdown).CornerRadius = UDim.new(0, 6)
 
-local colorDropContainer = Instance.new("Frame")
-colorDropContainer.Size                 = UDim2.new(1, -28, 0, 180)
-colorDropContainer.Position             = UDim2.new(0, 14, 0, 290)
+colorDropContainer = Instance.new("Frame")
+colorDropContainer.Size                 = UDim2.new(1, -28, 0, 190)
+colorDropContainer.Position             = UDim2.new(0, 14, 0, 334)
 colorDropContainer.BackgroundColor3     = Color3.fromRGB(25, 8, 14)
 colorDropContainer.BorderSizePixel      = 0
 colorDropContainer.Visible              = false
@@ -736,56 +998,131 @@ cDropStroke.Color = Color3.fromRGB(150, 30, 50)
 cDropStroke.Thickness = 1
 cDropStroke.Parent = colorDropContainer
 
-local colorListFrame = Instance.new("ScrollingFrame")
-colorListFrame.Size               = UDim2.new(1, -12, 1, -12)
-colorListFrame.Position           = UDim2.new(0, 6, 0, 6)
-colorListFrame.BackgroundTransparency = 1
-colorListFrame.BorderSizePixel    = 0
-colorListFrame.CanvasSize         = UDim2.new(0, 0, 0, #COLOR_PALETTE * 25)
-colorListFrame.ScrollBarThickness = 3
-colorListFrame.ZIndex             = 31
-colorListFrame.Parent             = colorDropContainer
+local playerColorListFrame = Instance.new("ScrollingFrame")
+playerColorListFrame.Size               = UDim2.new(1, -12, 1, -12)
+playerColorListFrame.Position           = UDim2.new(0, 6, 0, 6)
+playerColorListFrame.BackgroundTransparency = 1
+playerColorListFrame.BorderSizePixel    = 0
+playerColorListFrame.CanvasSize         = UDim2.new(0, 0, 0, 0)
+playerColorListFrame.ScrollBarThickness = 3
+playerColorListFrame.ZIndex             = 31
+playerColorListFrame.Parent             = colorDropContainer
 
-local colorListLayout = Instance.new("UIListLayout")
-colorListLayout.Padding = UDim.new(0, 3)
-colorListLayout.Parent = colorListFrame
+local playerCategoryFrames = {}
 
-for _, cInfo in ipairs(COLOR_PALETTE) do
-    local cBtn = Instance.new("TextButton")
-    cBtn.Size             = UDim2.new(1, -4, 0, 22)
-    cBtn.BackgroundColor3 = Color3.fromRGB(45, 12, 22)
-    cBtn.Text             = "  " .. cInfo.Name
-    cBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
-    cBtn.Font             = Enum.Font.Gotham
-    cBtn.TextSize         = 11
-    cBtn.TextXAlignment   = Enum.TextXAlignment.Left
-    cBtn.BorderSizePixel  = 0
-    cBtn.ZIndex           = 32
-    cBtn.Parent           = colorListFrame
-    Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 4)
-
-    local preview = Instance.new("Frame")
-    preview.Size             = UDim2.new(0, 14, 0, 14)
-    preview.Position         = UDim2.new(1, -20, 0.5, -7)
-    preview.BackgroundColor3 = cInfo.Color
-    preview.BorderSizePixel  = 0
-    preview.ZIndex           = 33
-    preview.Parent           = cBtn
-    Instance.new("UICorner", preview).CornerRadius = UDim.new(0, 3)
-
-    cBtn.MouseButton1Click:Connect(function()
-        if selectedPlayer then
-            local data = getPlayerData(selectedPlayer)
-            data.Color = cInfo.Color
-            saveConfig()
-            btnColorDropdown.Text = "  " .. cInfo.Name .. " ▼"
-            colorDropContainer.Visible = false
+local function updatePlayerColorListCanvas()
+    local currentY = 0
+    for _, catGroup in ipairs(playerCategoryFrames) do
+        catGroup.Header.Position = UDim2.new(0, 2, 0, currentY)
+        currentY = currentY + 28
+        
+        if catGroup.Container.Visible then
+            catGroup.Container.Position = UDim2.new(0, 8, 0, currentY)
+            local containerHeight = #catGroup.Items * 25
+            catGroup.Container.Size = UDim2.new(1, -12, 0, containerHeight)
+            currentY = currentY + containerHeight + 4
+        else
+            currentY = currentY + 2
         end
-    end)
+    end
+    playerColorListFrame.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
 end
 
+local function populatePlayerColorList()
+    for _, categoryData in ipairs(PLAYER_COLOR_CATEGORIES) do
+        local catHeader = Instance.new("TextButton")
+        catHeader.Size = UDim2.new(1, -4, 0, 26)
+        catHeader.BackgroundColor3 = Color3.fromRGB(42, 12, 22)
+        catHeader.Text = "  ▼ " .. categoryData.Category
+        catHeader.TextColor3 = Color3.fromRGB(255, 220, 225)
+        catHeader.Font = Enum.Font.GothamBold
+        catHeader.TextSize = 11
+        catHeader.TextXAlignment = Enum.TextXAlignment.Left
+        catHeader.BorderSizePixel = 0
+        catHeader.ZIndex = 32
+        catHeader.Parent = playerColorListFrame
+        Instance.new("UICorner", catHeader).CornerRadius = UDim.new(0, 4)
+
+        local catSample = Instance.new("Frame")
+        catSample.Size = UDim2.new(0, 12, 0, 12)
+        catSample.Position = UDim2.new(1, -22, 0.5, -6)
+        catSample.BackgroundColor3 = categoryData.MainColor
+        catSample.BorderSizePixel = 0
+        catSample.ZIndex = 33
+        catSample.Parent = catHeader
+        Instance.new("UICorner", catSample).CornerRadius = UDim.new(0, 3)
+
+        local varContainer = Instance.new("Frame")
+        varContainer.BackgroundTransparency = 1
+        varContainer.BorderSizePixel = 0
+        varContainer.ZIndex = 32
+        varContainer.Visible = true
+        varContainer.Parent = playerColorListFrame
+
+        local varLayout = Instance.new("UIListLayout")
+        varLayout.Padding = UDim.new(0, 2)
+        varLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        varLayout.Parent = varContainer
+
+        table.insert(playerCategoryFrames, {
+            Header = catHeader,
+            Container = varContainer,
+            Items = categoryData.Variations
+        })
+
+        for vIdx, varItem in ipairs(categoryData.Variations) do
+            local varBtn = Instance.new("TextButton")
+            varBtn.Size = UDim2.new(1, 0, 0, 23)
+            varBtn.BackgroundColor3 = Color3.fromRGB(22, 6, 12)
+            varBtn.Text = "        " .. varItem.Name
+            varBtn.TextColor3 = Color3.fromRGB(230, 230, 235)
+            varBtn.Font = Enum.Font.Gotham
+            varBtn.TextSize = 11
+            varBtn.TextXAlignment = Enum.TextXAlignment.Left
+            varBtn.BorderSizePixel = 0
+            varBtn.LayoutOrder = vIdx
+            varBtn.ZIndex = 33
+            varBtn.Parent = varContainer
+            Instance.new("UICorner", varBtn).CornerRadius = UDim.new(0, 4)
+
+            local sample = Instance.new("Frame")
+            sample.Size = UDim2.new(0, 10, 0, 10)
+            sample.Position = UDim2.new(0, 12, 0.5, -5)
+            sample.BackgroundColor3 = varItem.Color
+            sample.BorderSizePixel = 0
+            sample.ZIndex = 34
+            sample.Parent = varBtn
+            Instance.new("UICorner", sample).CornerRadius = UDim.new(0, 3)
+
+            varBtn.MouseButton1Click:Connect(function()
+                if selectedPlayer then
+                    local data = getPlayerData(selectedPlayer)
+                    data.Color = varItem.Color
+                    btnColorDropdown.Text = "  " .. varItem.Name .. " ▼"
+                    colorDropContainer.Visible = false
+                    saveConfig()
+                end
+            end)
+        end
+
+        local isExpanded = true
+        catHeader.MouseButton1Click:Connect(function()
+            isExpanded = not isExpanded
+            varContainer.Visible = isExpanded
+            catHeader.Text = (isExpanded and "  ▼ " or "  ▶ ") .. categoryData.Category
+            updatePlayerColorListCanvas()
+        end)
+    end
+
+    updatePlayerColorListCanvas()
+end
+
+populatePlayerColorList()
+
 btnColorDropdown.MouseButton1Click:Connect(function()
-    colorDropContainer.Visible = not colorDropContainer.Visible
+    selfColorDropContainer.Visible = false
+    playerDropContainer.Visible    = false
+    colorDropContainer.Visible     = not colorDropContainer.Visible
 end)
 
 -- Rodapé
