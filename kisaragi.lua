@@ -89,7 +89,7 @@ local particleContainer = Instance.new("Folder")
 particleContainer.Name = "KisaragiParticles"
 
 local activeParticles = {}
-local PARTICLE_COUNT = 65 -- Quantidade ideal de esferas delicadas
+local PARTICLE_COUNT = 50 -- Reduzido de 65 para 50 para não poluir a tela
 
 local function clearParticles()
     for _, p in ipairs(activeParticles) do
