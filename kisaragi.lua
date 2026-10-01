@@ -89,7 +89,7 @@ local particleContainer = Instance.new("Folder")
 particleContainer.Name = "KisaragiParticles"
 
 local activeParticles = {}
-local PARTICLE_COUNT = 50 -- Reduzido de 65 para 50 para não poluir a tela
+local PARTICLE_COUNT = 50 -- Quantidade ideal equilibrada
 
 local function clearParticles()
     for _, p in ipairs(activeParticles) do
@@ -122,8 +122,8 @@ local function createParticle(guiHolder)
     local sizeMap = { [1] = math.random(1, 2), [2] = math.random(2, 3), [3] = math.random(4, 5) }
     local size = sizeMap[depth]
 
-    local startX = math.random(30, math.max(31, viewportSize.X - 30))
-    local startY = math.random(30, math.max(31, viewportSize.Y - 30))
+    local startX = math.random(10, math.max(11, viewportSize.X - 10))
+    local startY = math.random(10, math.max(11, viewportSize.Y - 10))
 
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, size, 0, size)
@@ -148,7 +148,7 @@ local function createParticle(guiHolder)
         Frame = frame,
         Stroke = stroke,
         Depth = depth,
-        ExactX = startX, -- Armazena a posição exata em decimais
+        ExactX = startX,
         ExactY = startY,
         PulseSpeed = math.random(10, 30) / 10,
         BaseTransparency = frame.BackgroundTransparency,
@@ -167,52 +167,56 @@ local function setupParticles(guiHolder)
     end
 end
 
--- Loop de animação das partículas usando dt (DeltaTime) para FPS constante
+-- Loop de animação com Screen Wrap (fluxo contínuo e balanceado em toda a tela)
 RunService.RenderStepped:Connect(function(dt)
     if not BlindnessEnabled then return end
 
     local viewportSize = Camera.ViewportSize
-    local edgeMargin = 30 -- Distância da borda para começar a sumir
+    local edgeMargin = 25
 
     for _, p in ipairs(activeParticles) do
         if p.Frame and p.Frame.Parent then
-            -- Adiciona a velocidade com base no tempo passado (dt)
             p.ExactX = p.ExactX + (p.SpeedX * dt)
             p.ExactY = p.ExactY + (p.SpeedY * dt)
+
+            -- Screen Wrap: Se saiu por um lado, atravessa e entra pelo lado oposto perfeitamente
+            if p.ExactX < -15 then
+                p.ExactX = viewportSize.X + 10
+                setParticleMovement(p)
+            elseif p.ExactX > viewportSize.X + 15 then
+                p.ExactX = -10
+                setParticleMovement(p)
+            end
+
+            if p.ExactY < -15 then
+                p.ExactY = viewportSize.Y + 10
+                setParticleMovement(p)
+            elseif p.ExactY > viewportSize.Y + 15 then
+                p.ExactY = -10
+                setParticleMovement(p)
+            end
 
             -- Atualiza a posição visual
             p.Frame.Position = UDim2.new(0, math.floor(p.ExactX), 0, math.floor(p.ExactY))
 
-            -- Calcula a distância para a borda mais próxima
+            -- Calcula o Fade-out suave próximo às bordas da tela
             local distTop = p.ExactY
             local distBottom = viewportSize.Y - p.ExactY
             local distLeft = p.ExactX
             local distRight = viewportSize.X - p.ExactX
-            
             local minEdgeDist = math.min(distTop, distBottom, distLeft, distRight)
-            
-            -- edgeAlpha = 1 (Centro da tela), edgeAlpha = 0 (Na borda)
             local edgeAlpha = math.clamp(minEdgeDist / edgeMargin, 0, 1)
 
             -- Pulsação suave padrão
             local pulse = (math.sin(tick() * p.PulseSpeed + p.Seed) + 1) / 2
             local alphaOffset = (p.Depth == 1) and 0.35 or 0.2
             
-            -- Mistura a Transparência da Pulsação com o Efeito da Borda
             local baseT = math.clamp(p.BaseTransparency + (pulse * alphaOffset), 0.0, 0.95)
             local finalT = 1 - ((1 - baseT) * edgeAlpha) 
 
             p.Frame.BackgroundTransparency = finalT
             if p.Stroke then
                 p.Stroke.Transparency = math.clamp(finalT + 0.1, 0, 1) 
-            end
-
-            -- Se saiu completamente da tela (fade-out completado)
-            if minEdgeDist < -5 then
-                p.ExactX = math.random(edgeMargin, math.max(edgeMargin + 1, viewportSize.X - edgeMargin))
-                p.ExactY = math.random(edgeMargin, math.max(edgeMargin + 1, viewportSize.Y - edgeMargin))
-                p.Frame.Position = UDim2.new(0, math.floor(p.ExactX), 0, math.floor(p.ExactY))
-                setParticleMovement(p) -- Sorteia nova rota e velocidade suave
             end
         end
     end
