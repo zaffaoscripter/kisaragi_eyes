@@ -16,21 +16,29 @@ local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local Camera = workspace.CurrentCamera
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-	Camera = workspace.CurrentCamera
-end)
 
 local TWEEN_SWITCH = TweenInfo.new(0.2)
-local sin, floor, clamp, min, max = math.sin, math.floor, math.clamp, math.min, math.max
-local clock = tick
-local HEAD_OFF = Vector3.new(0, 0.8, 0)
-local FEET_OFF = Vector3.new(0, -3, 0)
-local CHEST_OFF = Vector3.new(0, 1.2, 0)
 
 local losParams = RaycastParams.new()
 losParams.FilterType = Enum.RaycastFilterType.Exclude
 losParams.IgnoreWater = true
-local losFilter = { nil, nil }
+
+local function canSeeCharacter(character, root, head)
+	local origin = Camera.CFrame.Position
+	local localChar = LocalPlayer.Character
+	if localChar then
+		losParams.FilterDescendantsInstances = { localChar, character, Camera }
+	else
+		losParams.FilterDescendantsInstances = { character, Camera }
+	end
+
+	local toRoot = root.Position - origin
+	if toRoot.Magnitude > 0 and not workspace:Raycast(origin, toRoot, losParams) then
+		return true
+	end
+	local toHead = head.Position - origin
+	return toHead.Magnitude > 0 and workspace:Raycast(origin, toHead, losParams) == nil
+end
 
 -- ==================== Config & Save ====================
 local Config = {
@@ -113,14 +121,13 @@ local function getPlayerData(player)
 	return data
 end
 
--- ==================== Esferas de tela (Drawing, mesmo visual da v0) ====================
+-- ==================== Esferas de tela (visão noturna v0) ====================
 local PARTICLE_COUNT = 50
-local WHITE = Color3.new(1, 1, 1)
+local particleContainer = Instance.new("Folder")
+particleContainer.Name = "KisaragiParticles"
+
 local activeParticles = {}
 local particlesReady = false
-local hasDrawing = pcall(function()
-	return Drawing ~= nil
-end)
 
 local function setParticleMovement(pData)
 	local angle = math.random() * math.pi * 2
@@ -134,13 +141,12 @@ end
 local function clearParticles()
 	for i = 1, #activeParticles do
 		local p = activeParticles[i]
-		if p.Circle then
-			pcall(function()
-				p.Circle:Remove()
-			end)
+		if p.Frame then
+			p.Frame:Destroy()
 		end
 		activeParticles[i] = nil
 	end
+	particleContainer:ClearAllChildren()
 	particlesReady = false
 end
 
@@ -149,44 +155,40 @@ local function createParticle()
 	if viewportSize.X == 0 or viewportSize.Y == 0 then
 		return
 	end
-	if not hasDrawing then
-		return
-	end
 
 	local depth = math.random(1, 3)
-	local radiusMap = { math.random(1, 2), math.random(2, 3), math.random(4, 5) }
-	local radius = radiusMap[depth] * 0.55
+	local sizeMap = { math.random(1, 2), math.random(2, 3), math.random(4, 5) }
+	local size = sizeMap[depth]
 	local startX = math.random(10, math.max(11, viewportSize.X - 10))
 	local startY = math.random(10, math.max(11, viewportSize.Y - 10))
-	local alphaMap = { 0.5, 0.25, 0.05 }
 
-	local ok, circle = pcall(function()
-		local c = Drawing.new("Circle")
-		c.Filled = true
-		c.NumSides = (depth == 3) and 12 or 8
-		c.Thickness = (depth == 3) and 1.4 or 0.8
-		c.Color = WHITE
-		c.Radius = radius
-		c.Position = Vector2.new(startX, startY)
-		c.Transparency = alphaMap[depth]
-		c.Visible = true
-		c.ZIndex = depth
-		return c
-	end)
-	if not ok or not circle then
-		return
-	end
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.fromOffset(size, size)
+	frame.Position = UDim2.fromOffset(startX, startY)
+	frame.BackgroundColor3 = Color3.new(1, 1, 1)
+	frame.BorderSizePixel = 0
+	frame.ZIndex = depth
+	frame.Parent = particleContainer
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(1, 0)
+
+	local alphaMap = { 0.5, 0.25, 0.05 }
+	frame.BackgroundTransparency = alphaMap[depth]
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.new(1, 1, 1)
+	stroke.Thickness = (depth == 3) and 1.8 or 1.0
+	stroke.Parent = frame
 
 	local pData = {
-		Circle = circle,
+		Frame = frame,
+		Stroke = stroke,
 		Depth = depth,
 		ExactX = startX,
 		ExactY = startY,
 		PulseSpeed = math.random(10, 30) / 10,
-		BaseTransparency = alphaMap[depth],
+		BaseTransparency = frame.BackgroundTransparency,
 		Seed = math.random(1, 1000),
 		AlphaOffset = (depth == 1) and 0.35 or 0.2,
-		LastT = -1,
 	}
 	setParticleMovement(pData)
 	activeParticles[#activeParticles + 1] = pData
@@ -194,6 +196,10 @@ end
 
 local function setupParticles()
 	clearParticles()
+	if not screenGui then
+		return
+	end
+	particleContainer.Parent = screenGui
 	for _ = 1, PARTICLE_COUNT do
 		createParticle()
 	end
@@ -313,16 +319,13 @@ local GLOW_SIZE = NumberSequence.new({
 	NumberSequenceKeypoint.new(0, 0.8),
 	NumberSequenceKeypoint.new(1, 2.5),
 })
-local GLOW_RATE = 2
-local GLOW_PARTS = {
-	Head = true,
-	Torso = true,
-	UpperTorso = true,
-	LowerTorso = true,
-}
+local GLOW_LIFETIME = NumberRange.new(1, 1.5)
+local GLOW_SPEED = NumberRange.new(0.1, 0.4)
 
 local espObjects = {}
-local espList = {}
+local hasDrawing = pcall(function()
+	return Drawing ~= nil
+end)
 
 local function createDrawing(className, props)
 	if not hasDrawing then
@@ -354,7 +357,7 @@ end
 local function applyGlowToLimbs(character)
 	local glows = {}
 	for _, part in ipairs(character:GetChildren()) do
-		if part:IsA("BasePart") and GLOW_PARTS[part.Name] then
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Transparency < 1 then
 			local emitter = part:FindFirstChild("KisaragiLimbGlow")
 			if not emitter then
 				emitter = Instance.new("ParticleEmitter")
@@ -364,9 +367,9 @@ local function applyGlowToLimbs(character)
 				emitter.ZOffset = 0.5
 				emitter.Transparency = GLOW_TRANSPARENCY
 				emitter.Size = GLOW_SIZE
-				emitter.Lifetime = NumberRange.new(1, 1.5)
-				emitter.Speed = NumberRange.new(0.1, 0.4)
-				emitter.Rate = GLOW_RATE
+				emitter.Lifetime = GLOW_LIFETIME
+				emitter.Speed = GLOW_SPEED
+				emitter.Rate = 4
 				emitter.Enabled = false
 				emitter.Parent = part
 			end
@@ -374,66 +377,6 @@ local function applyGlowToLimbs(character)
 		end
 	end
 	return glows
-end
-
-local function hideHp(obj)
-	if obj.hpShown then
-		local hpBar = obj.hpBar
-		if hpBar then
-			hpBar.bg.Visible = false
-			hpBar.fg.Visible = false
-		end
-		obj.hpShown = false
-	end
-end
-
-local function hideDrawings(obj)
-	if obj.drawn then
-		if obj.label then
-			obj.label.Visible = false
-			obj.labelShown = false -- CORREÇÃO APLICADA AQUI
-		end
-		hideHp(obj)
-		obj.drawn = false
-	end
-end
-
-local function removeESP(character)
-	local obj = espObjects[character]
-	if not obj then
-		return
-	end
-	if obj.label then
-		pcall(function()
-			obj.label:Remove()
-		end)
-	end
-	if obj.hpBar then
-		pcall(function()
-			obj.hpBar.bg:Remove()
-			obj.hpBar.fg:Remove()
-		end)
-	end
-	if obj.hl then
-		pcall(function()
-			obj.hl:Destroy()
-		end)
-	end
-	if obj.glows then
-		for i = 1, #obj.glows do
-			pcall(function()
-				obj.glows[i]:Destroy()
-			end)
-		end
-	end
-	local idx = obj.index
-	local last = espList[#espList]
-	if idx and last then
-		espList[idx] = last
-		last.index = idx
-		espList[#espList] = nil
-	end
-	espObjects[character] = nil
 end
 
 local function createESP(character, player)
@@ -471,81 +414,74 @@ local function createESP(character, player)
 		Thickness = 1,
 	})
 
-	local data = getPlayerData(player)
-	local obj = {
-		character = character,
+	espObjects[character] = {
 		label = label,
 		hpBar = (bgBar and fgBar) and { bg = bgBar, fg = fgBar } or nil,
 		hl = applyHighlight(character),
-		glows = nil,
+		glows = applyGlowToLimbs(character),
 		player = player,
-		data = data,
-		hum = character:FindFirstChildOfClass("Humanoid"),
-		root = character:FindFirstChild("HumanoidRootPart"),
-		head = character:FindFirstChild("Head"),
 		lastGlowColor = nil,
 		lastGlowOn = false,
-		lastHlColor = nil,
-		lastHlOn = nil,
-		lastFillT = -1,
-		lastText = "",
-		lastDist = -1,
-		los = false,
-		drawn = false,
-		hpShown = false,
 	}
+end
 
-	character.ChildAdded:Connect(function(ch)
-		if ch.Name == "HumanoidRootPart" then
-			obj.root = ch
-		elseif ch.Name == "Head" then
-			obj.head = ch
-		elseif ch:IsA("Humanoid") then
-			obj.hum = ch
+local function hideDrawings(obj)
+	if obj.label then
+		obj.label.Visible = false
+	end
+	if obj.hpBar then
+		obj.hpBar.bg.Visible = false
+		obj.hpBar.fg.Visible = false
+	end
+end
+
+local function removeESP(character)
+	local obj = espObjects[character]
+	if not obj then
+		return
+	end
+	if obj.label then
+		pcall(function()
+			obj.label:Remove()
+		end)
+	end
+	if obj.hpBar then
+		pcall(function()
+			obj.hpBar.bg:Remove()
+			obj.hpBar.fg:Remove()
+		end)
+	end
+	if obj.hl then
+		pcall(function()
+			obj.hl:Destroy()
+		end)
+	end
+	if obj.glows then
+		for _, glow in ipairs(obj.glows) do
+			pcall(function()
+				glow:Destroy()
+			end)
 		end
-	end)
-
-	espList[#espList + 1] = obj
-	obj.index = #espList
-	espObjects[character] = obj
+	end
+	espObjects[character] = nil
 end
 
 -- ==================== Render (ESP + esferas) ====================
 local EDGE_MARGIN = 25
-local frameId = 0
-local lastPulseT = 0
-local pulse = 0
-
-local function hasLineOfSight(character, root)
-	local origin = Camera.CFrame.Position
-	losFilter[1] = LocalPlayer.Character
-	losFilter[2] = character
-	losParams.FilterDescendantsInstances = losFilter
-	return workspace:Raycast(origin, (root.Position + CHEST_OFF) - origin, losParams) == nil
-end
 
 RunService.RenderStepped:Connect(function(dt)
-	local cam = Camera
-	if not cam then
-		return
-	end
-
-	frameId += 1
-	local now = clock()
-	if now - lastPulseT >= 0.05 then
-		lastPulseT = now
-		pulse = (sin(now * 1.5) + 1) * 0.05
-	end
-
 	if Config.BlindnessEnabled and particlesReady then
-		local viewportSize = cam.ViewportSize
+		local viewportSize = Camera.ViewportSize
 		local vx, vy = viewportSize.X, viewportSize.Y
+		local now = tick()
+
 		for i = 1, #activeParticles do
 			local p = activeParticles[i]
-			local circle = p.Circle
-			if circle then
+			local frame = p.Frame
+			if frame and frame.Parent then
 				local x = p.ExactX + p.SpeedX * dt
 				local y = p.ExactY + p.SpeedY * dt
+
 				if x < -15 then
 					x = vx + 10
 					setParticleMovement(p)
@@ -560,85 +496,73 @@ RunService.RenderStepped:Connect(function(dt)
 					y = -10
 					setParticleMovement(p)
 				end
-				p.ExactX, p.ExactY = x, y
-				circle.Position = Vector2.new(x, y)
 
-				local edgeAlpha = min(y, vy - y, x, vx - x) / EDGE_MARGIN
+				p.ExactX, p.ExactY = x, y
+				frame.Position = UDim2.fromOffset(x, y)
+
+				local minEdge = math.min(y, vy - y, x, vx - x)
+				local edgeAlpha = minEdge / EDGE_MARGIN
 				if edgeAlpha < 0 then
 					edgeAlpha = 0
 				elseif edgeAlpha > 1 then
 					edgeAlpha = 1
 				end
-				local wave = (sin(now * p.PulseSpeed + p.Seed) + 1) * 0.5
-				local baseT = p.BaseTransparency + wave * p.AlphaOffset
+
+				local pulse = (math.sin(now * p.PulseSpeed + p.Seed) + 1) * 0.5
+				local baseT = p.BaseTransparency + pulse * p.AlphaOffset
 				if baseT < 0 then
 					baseT = 0
 				elseif baseT > 0.95 then
 					baseT = 0.95
 				end
 				local finalT = 1 - ((1 - baseT) * edgeAlpha)
-				if p.LastT ~= finalT then
-					p.LastT = finalT
-					circle.Transparency = finalT
-				end
+				frame.BackgroundTransparency = finalT
+				p.Stroke.Transparency = finalT + 0.1
 			end
 		end
 	end
 
-	local camPos = cam.CFrame.Position
+	local camPos = Camera.CFrame.Position
+	local pulse = (math.sin(tick() * 1.5) + 1) * 0.05
 	local auraOn = Config.AuraEnabled
 	local glowOn = auraOn and Config.GlowEnabled
 	local namesOn = Config.NameEnabled
 	local hpOn = Config.HpEnabled
-	local fillT = 0.85 + pulse
 
-	for i = 1, #espList do
-		local obj = espList[i]
-		local character = obj.character
-		if not character.Parent then
-			hideDrawings(obj)
+	for character, obj in pairs(espObjects) do
+		local player = obj.player
+		if not player then
 			continue
 		end
 
-		local data = obj.data
+		local data = getPlayerData(player)
 		local color = data.Color
 		local hl = obj.hl
 
 		if hl then
-			if obj.lastHlOn ~= auraOn then
-				hl.Enabled = auraOn
-				obj.lastHlOn = auraOn
-			end
+			hl.Enabled = auraOn
 			if auraOn then
-				if obj.lastHlColor ~= color then
-					hl.FillColor = color
-					hl.OutlineColor = color
-					obj.lastHlColor = color
-				end
-				if obj.lastFillT ~= fillT then
-					hl.FillTransparency = fillT
-					obj.lastFillT = fillT
-				end
+				hl.FillColor = color
+				hl.OutlineColor = color
+				hl.FillTransparency = 0.85 + pulse
 			end
 		end
 
 		local shouldGlow = glowOn and data.GlowActive
-		if shouldGlow and not obj.glows then
-			obj.glows = applyGlowToLimbs(character)
-		end
-		if obj.glows and (shouldGlow ~= obj.lastGlowOn or (shouldGlow and obj.lastGlowColor ~= color)) then
-			local seq = shouldGlow and ColorSequence.new(color) or nil
-			for g = 1, #obj.glows do
-				local emitter = obj.glows[g]
-				if emitter.Parent then
-					emitter.Enabled = shouldGlow
-					if seq then
-						emitter.Color = seq
+		if obj.glows then
+			if shouldGlow ~= obj.lastGlowOn or (shouldGlow and obj.lastGlowColor ~= color) then
+				local seq = shouldGlow and ColorSequence.new(color) or nil
+				for _, emitter in ipairs(obj.glows) do
+					if emitter.Parent then
+						emitter.Enabled = shouldGlow
+						if seq then
+							emitter.Color = seq
+						end
 					end
 				end
+				obj.lastGlowOn = shouldGlow
+				obj.lastGlowColor = color
 			end
-			obj.lastGlowOn = shouldGlow
-			obj.lastGlowColor = color
 		end
 
 		if not namesOn and not hpOn then
@@ -646,80 +570,61 @@ RunService.RenderStepped:Connect(function(dt)
 			continue
 		end
 
-		local hum, root, head = obj.hum, root, head
+		local hum = character:FindFirstChildOfClass("Humanoid")
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local head = character:FindFirstChild("Head")
 		if not (hum and root and head and hum.Health > 0) then
 			hideDrawings(obj)
 			continue
 		end
 
-		local topPos, topVis = cam:WorldToViewportPoint(head.Position + HEAD_OFF)
+		local topPos, topVis = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.8, 0))
 		if not (topVis and topPos.Z > 0) then
 			hideDrawings(obj)
 			continue
 		end
 
-		obj.drawn = true
-		local label = obj.label
-		if label then
+		if obj.label then
 			if namesOn then
 				local dist = (camPos - root.Position).Magnitude
-				local distFloor = floor(dist)
-				label.Position = Vector2.new(topPos.X, topPos.Y - 18)
-				if obj.lastDist ~= distFloor then
-					obj.lastDist = distFloor
-					local displayName = (data.CustomName ~= "") and data.CustomName or obj.player.Name
-					label.Text = displayName .. " [" .. distFloor .. "m]"
-				end
-				if obj.lastLabelColor ~= color then
-					label.Color = color
-					obj.lastLabelColor = color
-				end
-				if not obj.labelShown then
-					label.Visible = true
-					obj.labelShown = true
-				end
-			elseif obj.labelShown then
-				label.Visible = false
-				obj.labelShown = false
+				local displayName = (data.CustomName ~= "") and data.CustomName or player.Name
+				obj.label.Position = Vector2.new(topPos.X, topPos.Y - 18)
+				obj.label.Text = string.format("%s [%dm]", displayName, math.floor(dist))
+				obj.label.Color = color
+				obj.label.Visible = true
+			else
+				obj.label.Visible = false
 			end
 		end
 
 		local hpBar = obj.hpBar
 		if hpBar then
-			local showHp = false
-			if hpOn then
-				if (frameId + i) % 3 == 0 then
-					obj.los = hasLineOfSight(character, root)
+			if hpOn and canSeeCharacter(character, root, head) then
+				local bottomPos, bottomVis = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+				if bottomVis then
+					local fullHeight = bottomPos.Y - topPos.Y
+					local height = fullHeight * 0.70
+					local width = math.clamp(fullHeight / 2, 10, 150)
+					local barX = topPos.X + (width / 2) + 8
+					local startY = topPos.Y + (fullHeight * 0.15)
+					local barWidth = 4
+					local hpPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+					local fillHeight = height * hpPercent
+
+					hpBar.bg.Size = Vector2.new(barWidth, height)
+					hpBar.bg.Position = Vector2.new(barX, startY)
+					hpBar.bg.Visible = true
+					hpBar.fg.Size = Vector2.new(barWidth - 2, math.max(0, fillHeight - 2))
+					hpBar.fg.Position = Vector2.new(barX + 1, startY + 1 + (height - fillHeight))
+					hpBar.fg.Color = color
+					hpBar.fg.Visible = true
+				else
+					hpBar.bg.Visible = false
+					hpBar.fg.Visible = false
 				end
-				if obj.los then
-					local bottomPos, bottomVis = cam:WorldToViewportPoint(root.Position + FEET_OFF)
-					if bottomVis then
-						showHp = true
-						local fullHeight = bottomPos.Y - topPos.Y
-						local height = fullHeight * 0.70
-						local width = clamp(fullHeight * 0.5, 10, 150)
-						local barX = topPos.X + (width * 0.5) + 8
-						local startY = topPos.Y + (fullHeight * 0.15)
-						local hpPercent = clamp(hum.Health / hum.MaxHealth, 0, 1)
-						local fillHeight = height * hpPercent
-						hpBar.bg.Size = Vector2.new(4, height)
-						hpBar.bg.Position = Vector2.new(barX, startY)
-						hpBar.fg.Size = Vector2.new(2, max(0, fillHeight - 2))
-						hpBar.fg.Position = Vector2.new(barX + 1, startY + 1 + (height - fillHeight))
-						if obj.lastHpColor ~= color then
-							hpBar.fg.Color = color
-							obj.lastHpColor = color
-						end
-						if not obj.hpShown then
-							hpBar.bg.Visible = true
-							hpBar.fg.Visible = true
-							obj.hpShown = true
-						end
-					end
-				end
-			end
-			if not showHp then
-				hideHp(obj)
+			else
+				hpBar.bg.Visible = false
+				hpBar.fg.Visible = false
 			end
 		end
 	end
