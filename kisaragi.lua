@@ -39,6 +39,8 @@ local Config = {
 	AuraEnabled = true,
 	GlowEnabled = true,
 	BlindnessEnabled = false,
+	WallClipKeyEnabled = true,
+	WallClipActive = false,
 	SelfAuraColor = Color3.fromRGB(115, 10, 30),
 }
 
@@ -302,6 +304,244 @@ LocalPlayer.CharacterAdded:Connect(function()
 	end
 end)
 
+-- ==================== Atravessar paredes (P), sem atravessar o chão ====================
+local PhysicsService = game:GetService("PhysicsService")
+local CLIP_GROUP = "KisaragiNoWall"
+local CLIP_FLOOR_GROUP = "KisaragiClipFloor"
+local WALL_CLIP_DOWN = Vector3.new(0, -18, 0)
+
+local wallClipParams = RaycastParams.new()
+wallClipParams.FilterType = Enum.RaycastFilterType.Exclude
+wallClipParams.IgnoreWater = true
+
+local clipParts = {}
+local clipOrigGroup = {}
+local clipBoundChar
+local clipRoot
+local clipHum
+local clipPad
+local clipAddedConn
+local clipFilter = { nil, nil }
+local clipGroupsReady = false
+local clipGroupsFailed = false
+local clipUseFallback = false
+local clipFilterDirty = true
+
+local function tryRegisterGroup(name)
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup(name)
+	end)
+	pcall(function()
+		PhysicsService:CreateCollisionGroup(name)
+	end)
+end
+
+local function ensureClipGroups()
+	if clipGroupsReady then
+		return true
+	end
+	if clipGroupsFailed then
+		return false
+	end
+	local ok = pcall(function()
+		tryRegisterGroup(CLIP_GROUP)
+		tryRegisterGroup(CLIP_FLOOR_GROUP)
+		PhysicsService:CollisionGroupSetCollidable(CLIP_GROUP, "Default", false)
+		PhysicsService:CollisionGroupSetCollidable(CLIP_GROUP, CLIP_FLOOR_GROUP, true)
+		PhysicsService:CollisionGroupSetCollidable(CLIP_FLOOR_GROUP, "Default", false)
+	end)
+	clipGroupsReady = ok
+	clipGroupsFailed = not ok
+	return ok
+end
+
+local function setPartClipGroup(part, groupName)
+	if not pcall(function()
+		part.CollisionGroup = groupName
+	end) then
+		pcall(function()
+			PhysicsService:SetPartCollisionGroup(part, groupName)
+		end)
+	end
+end
+
+local function rememberAndClipPart(part)
+	if not part:IsA("BasePart") or clipOrigGroup[part] ~= nil then
+		return
+	end
+	clipOrigGroup[part] = part.CollisionGroup or "Default"
+	clipParts[#clipParts + 1] = part
+	if clipUseFallback then
+		part.CanCollide = false
+	elseif clipGroupsReady then
+		setPartClipGroup(part, CLIP_GROUP)
+	end
+end
+
+local function applyClipToCachedParts()
+	if clipUseFallback then
+		for i = 1, #clipParts do
+			local part = clipParts[i]
+			if part and part.Parent then
+				part.CanCollide = false
+			end
+		end
+		return
+	end
+	for i = 1, #clipParts do
+		local part = clipParts[i]
+		if part and part.Parent then
+			setPartClipGroup(part, CLIP_GROUP)
+		end
+	end
+end
+
+local function restoreClipParts()
+	for part, groupName in pairs(clipOrigGroup) do
+		if part.Parent then
+			setPartClipGroup(part, groupName)
+		end
+		clipOrigGroup[part] = nil
+	end
+	table.clear(clipParts)
+end
+
+local function destroyClipPad()
+	if clipPad then
+		clipPad:Destroy()
+		clipPad = nil
+		clipFilterDirty = true
+	end
+end
+
+local function getClipPad()
+	if clipPad and clipPad.Parent then
+		return clipPad
+	end
+	local pad = Instance.new("Part")
+	pad.Name = "KisaragiClipPad"
+	pad.Size = Vector3.new(6, 1, 6)
+	pad.Anchored = true
+	pad.CanCollide = true
+	pad.CanQuery = false
+	pad.CanTouch = false
+	pad.CastShadow = false
+	pad.Transparency = 1
+	pad.Massless = true
+	setPartClipGroup(pad, CLIP_FLOOR_GROUP)
+	pad.Parent = workspace
+	clipPad = pad
+	clipFilterDirty = true
+	return pad
+end
+
+local function unbindClipCharacter()
+	if clipAddedConn then
+		clipAddedConn:Disconnect()
+		clipAddedConn = nil
+	end
+	restoreClipParts()
+	clipBoundChar = nil
+	clipRoot = nil
+	clipHum = nil
+	clipFilterDirty = true
+end
+
+local function bindClipCharacter(char)
+	if clipBoundChar == char and clipRoot and clipRoot.Parent then
+		return
+	end
+	unbindClipCharacter()
+	if not char then
+		return
+	end
+	clipBoundChar = char
+	clipRoot = char:FindFirstChild("HumanoidRootPart")
+	clipHum = char:FindFirstChildOfClass("Humanoid")
+	clipUseFallback = not ensureClipGroups()
+	for _, inst in ipairs(char:GetDescendants()) do
+		rememberAndClipPart(inst)
+	end
+	clipAddedConn = char.DescendantAdded:Connect(rememberAndClipPart)
+	clipFilterDirty = true
+end
+
+local function setWallClipActive(enable)
+	enable = enable and true or false
+	Config.WallClipActive = enable
+	if not enable then
+		unbindClipCharacter()
+		destroyClipPad()
+		clipUseFallback = false
+	end
+end
+
+local function refreshClipFilter()
+	if not clipFilterDirty then
+		return
+	end
+	clipFilter[1] = clipBoundChar
+	clipFilter[2] = clipPad
+	wallClipParams.FilterDescendantsInstances = clipFilter
+	clipFilterDirty = false
+end
+
+RunService.Heartbeat:Connect(function()
+	if not Config.WallClipActive then
+		return
+	end
+
+	local char = LocalPlayer.Character
+	if not char then
+		return
+	end
+	bindClipCharacter(char)
+	local root = clipRoot
+	if not (root and root.Parent) then
+		return
+	end
+
+	if clipUseFallback then
+		refreshClipFilter()
+		local pos = root.Position
+		local hit = workspace:Raycast(pos, WALL_CLIP_DOWN, wallClipParams)
+		if not hit then
+			return
+		end
+		local hum = clipHum
+		if not (hum and hum.Parent) then
+			return
+		end
+		local sink = (hit.Position.Y + (root.Size.Y * 0.5) + hum.HipHeight) - pos.Y
+		if sink > 0.2 then
+			root.CFrame += Vector3.new(0, sink, 0)
+			local vel = root.AssemblyLinearVelocity
+			if vel.Y < 0 then
+				root.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+			end
+		end
+		return
+	end
+
+	local pad = getClipPad()
+	refreshClipFilter()
+	local pos = root.Position
+	local hit = workspace:Raycast(pos, WALL_CLIP_DOWN, wallClipParams)
+	if hit then
+		pad.CFrame = CFrame.new(pos.X, hit.Position.Y - 0.52, pos.Z)
+	else
+		pad.CFrame = CFrame.new(pos.X, pos.Y - 500, pos.Z)
+	end
+end)
+
+-- Humanoid reaplica colisão no Stepped; só o fallback precisa disso.
+RunService.Stepped:Connect(function()
+	if not (Config.WallClipActive and clipUseFallback) then
+		return
+	end
+	applyClipToCachedParts()
+end)
+
 -- ==================== ESP ====================
 local GLIM_TEXTURE = "rbxassetid://867619398"
 local GLOW_TRANSPARENCY = NumberSequence.new({
@@ -392,6 +632,7 @@ local function hideDrawings(obj)
 		if obj.label then
 			obj.label.Visible = false
 		end
+		obj.labelShown = false
 		hideHp(obj)
 		obj.drawn = false
 	end
@@ -944,8 +1185,8 @@ screenGui = new("ScreenGui", {
 }, guiParent)
 
 local mainFrame = new("Frame", {
-	Size = UDim2.fromOffset(340, 490),
-	Position = UDim2.new(0.5, -170, 0.5, -245),
+	Size = UDim2.fromOffset(340, 522),
+	Position = UDim2.new(0.5, -170, 0.5, -261),
 	BackgroundColor3 = Color3.fromRGB(22, 6, 12),
 	BackgroundTransparency = 0.15,
 	BorderSizePixel = 0,
@@ -1085,6 +1326,12 @@ end)
 createSwitch(mainFrame, "Cegueira / Visão Noturna", Config.BlindnessEnabled, 170, function(val)
 	setBlindnessMode(val)
 end)
+createSwitch(mainFrame, "Permitir tecla P (paredes)", Config.WallClipKeyEnabled, 200, function(val)
+	Config.WallClipKeyEnabled = val
+	if not val then
+		setWallClipActive(false)
+	end
+end)
 
 local selfColorDropContainer, playerDropContainer, colorDropContainer
 
@@ -1181,7 +1428,7 @@ end
 -- Gaveta 1: cor da aura própria
 new("TextLabel", {
 	Size = UDim2.new(1, -28, 0, 16),
-	Position = UDim2.fromOffset(14, 202),
+	Position = UDim2.fromOffset(14, 234),
 	BackgroundTransparency = 1,
 	Text = "Cor da Sua Aura (Cegueira):",
 	TextColor3 = Color3.fromRGB(200, 160, 170),
@@ -1193,7 +1440,7 @@ new("TextLabel", {
 
 local btnSelfColorDropdown = new("TextButton", {
 	Size = UDim2.new(1, -28, 0, 28),
-	Position = UDim2.fromOffset(14, 220),
+	Position = UDim2.fromOffset(14, 252),
 	BackgroundColor3 = Color3.fromRGB(35, 10, 18),
 	Text = "  Vinho (Padrão) ▼",
 	TextColor3 = Color3.new(1, 1, 1),
@@ -1207,7 +1454,7 @@ corner(btnSelfColorDropdown, 6)
 
 selfColorDropContainer = new("Frame", {
 	Size = UDim2.new(1, -28, 0, 190),
-	Position = UDim2.fromOffset(14, 252),
+	Position = UDim2.fromOffset(14, 284),
 	BackgroundColor3 = Color3.fromRGB(25, 8, 14),
 	BorderSizePixel = 0,
 	Visible = false,
@@ -1244,7 +1491,7 @@ end)
 -- Gaveta 2: jogador
 new("TextLabel", {
 	Size = UDim2.new(1, -28, 0, 16),
-	Position = UDim2.fromOffset(14, 256),
+	Position = UDim2.fromOffset(14, 288),
 	BackgroundTransparency = 1,
 	Text = "Jogador Selecionado:",
 	TextColor3 = Color3.fromRGB(200, 160, 170),
@@ -1256,7 +1503,7 @@ new("TextLabel", {
 
 local btnPlayerDropdown = new("TextButton", {
 	Size = UDim2.new(1, -28, 0, 28),
-	Position = UDim2.fromOffset(14, 274),
+	Position = UDim2.fromOffset(14, 306),
 	BackgroundColor3 = Color3.fromRGB(35, 10, 18),
 	Text = "  Clique para escolher um jogador ▼",
 	TextColor3 = Color3.new(1, 1, 1),
@@ -1270,7 +1517,7 @@ corner(btnPlayerDropdown, 6)
 
 playerDropContainer = new("Frame", {
 	Size = UDim2.new(1, -28, 0, 145),
-	Position = UDim2.fromOffset(14, 304),
+	Position = UDim2.fromOffset(14, 336),
 	BackgroundColor3 = Color3.fromRGB(25, 8, 14),
 	BorderSizePixel = 0,
 	Visible = false,
@@ -1369,7 +1616,7 @@ task.defer(updatePlayerList)
 -- Apelido
 local rowRename = new("Frame", {
 	Size = UDim2.new(1, -28, 0, 28),
-	Position = UDim2.fromOffset(14, 310),
+	Position = UDim2.fromOffset(14, 342),
 	BackgroundTransparency = 1,
 	ZIndex = 6,
 }, mainFrame)
@@ -1410,7 +1657,7 @@ end)
 
 btnGlowToggle = new("TextButton", {
 	Size = UDim2.new(1, -28, 0, 26),
-	Position = UDim2.fromOffset(14, 344),
+	Position = UDim2.fromOffset(14, 376),
 	BackgroundColor3 = Color3.fromRGB(35, 10, 18),
 	Text = "  Glow Individual: [DESATIVADO]",
 	TextColor3 = Color3.new(1, 1, 1),
@@ -1436,7 +1683,7 @@ end)
 -- Gaveta 3: cor do jogador
 new("TextLabel", {
 	Size = UDim2.new(1, -28, 0, 16),
-	Position = UDim2.fromOffset(14, 378),
+	Position = UDim2.fromOffset(14, 410),
 	BackgroundTransparency = 1,
 	Text = "Cor da Aura do Jogador:",
 	TextColor3 = Color3.fromRGB(200, 160, 170),
@@ -1448,7 +1695,7 @@ new("TextLabel", {
 
 local btnColorDropdown = new("TextButton", {
 	Size = UDim2.new(1, -28, 0, 28),
-	Position = UDim2.fromOffset(14, 396),
+	Position = UDim2.fromOffset(14, 428),
 	BackgroundColor3 = Color3.fromRGB(35, 10, 18),
 	Text = "  Selecione uma cor ▼",
 	TextColor3 = Color3.new(1, 1, 1),
@@ -1462,7 +1709,7 @@ corner(btnColorDropdown, 6)
 
 colorDropContainer = new("Frame", {
 	Size = UDim2.new(1, -28, 0, 190),
-	Position = UDim2.fromOffset(14, 428),
+	Position = UDim2.fromOffset(14, 460),
 	BackgroundColor3 = Color3.fromRGB(25, 8, 14),
 	BorderSizePixel = 0,
 	Visible = false,
@@ -1499,7 +1746,7 @@ new("TextLabel", {
 	Size = UDim2.new(1, 0, 0, 20),
 	Position = UDim2.new(0, 0, 1, -22),
 	BackgroundTransparency = 1,
-	Text = "[RightShift] Ocultar / Mostrar Menu",
+	Text = "[RightShift] Menu  |  [P] Atravessar paredes",
 	TextColor3 = Color3.fromRGB(160, 100, 110),
 	Font = Enum.Font.Gotham,
 	TextSize = 11,
@@ -1512,6 +1759,11 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 	if input.KeyCode == Enum.KeyCode.RightShift then
 		mainFrame.Visible = not mainFrame.Visible
+	elseif input.KeyCode == Enum.KeyCode.P then
+		if not Config.WallClipKeyEnabled then
+			return
+		end
+		setWallClipActive(not Config.WallClipActive)
 	end
 end)
 
