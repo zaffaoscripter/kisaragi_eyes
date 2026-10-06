@@ -369,7 +369,10 @@ local function rememberAndClipPart(part)
 	if not part:IsA("BasePart") or clipOrigGroup[part] ~= nil then
 		return
 	end
-	clipOrigGroup[part] = part.CollisionGroup or "Default"
+	clipOrigGroup[part] = {
+		group = part.CollisionGroup or "Default",
+		collide = part.CanCollide,
+	}
 	clipParts[#clipParts + 1] = part
 	if clipUseFallback then
 		part.CanCollide = false
@@ -397,9 +400,16 @@ local function applyClipToCachedParts()
 end
 
 local function restoreClipParts()
-	for part, groupName in pairs(clipOrigGroup) do
+	for part, info in pairs(clipOrigGroup) do
 		if part.Parent then
+			local groupName = (type(info) == "table" and info.group) or info or "Default"
+			if groupName == CLIP_GROUP then
+				groupName = "Default"
+			end
 			setPartClipGroup(part, groupName)
+			if type(info) == "table" then
+				part.CanCollide = info.collide
+			end
 		end
 		clipOrigGroup[part] = nil
 	end
@@ -435,12 +445,25 @@ local function getClipPad()
 	return pad
 end
 
+local function forceUnclipCharacter(char)
+	if not char then
+		return
+	end
+	for _, part in ipairs(char:GetDescendants()) do
+		if part:IsA("BasePart") and part.CollisionGroup == CLIP_GROUP then
+			setPartClipGroup(part, "Default")
+		end
+	end
+end
+
 local function unbindClipCharacter()
 	if clipAddedConn then
 		clipAddedConn:Disconnect()
 		clipAddedConn = nil
 	end
+	local char = clipBoundChar or (LocalPlayer and LocalPlayer.Character)
 	restoreClipParts()
+	forceUnclipCharacter(char)
 	clipBoundChar = nil
 	clipRoot = nil
 	clipHum = nil
@@ -496,6 +519,9 @@ RunService.Heartbeat:Connect(function()
 		return
 	end
 	bindClipCharacter(char)
+	if not Config.WallClipActive then
+		return
+	end
 	local root = clipRoot
 	if not (root and root.Parent) then
 		return
@@ -1753,17 +1779,35 @@ new("TextLabel", {
 	ZIndex = 6,
 }, mainFrame)
 
+local wallClipPHeld = false
+
 UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then
-		return
-	end
 	if input.KeyCode == Enum.KeyCode.RightShift then
-		mainFrame.Visible = not mainFrame.Visible
-	elseif input.KeyCode == Enum.KeyCode.P then
-		if not Config.WallClipKeyEnabled then
+		if gp then
 			return
 		end
-		setWallClipActive(not Config.WallClipActive)
+		mainFrame.Visible = not mainFrame.Visible
+		return
+	end
+	if input.KeyCode ~= Enum.KeyCode.P then
+		return
+	end
+	if wallClipPHeld then
+		return
+	end
+	wallClipPHeld = true
+	if UserInputService:GetFocusedTextBox() then
+		return
+	end
+	if not Config.WallClipKeyEnabled then
+		return
+	end
+	setWallClipActive(not Config.WallClipActive)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.KeyCode == Enum.KeyCode.P then
+		wallClipPHeld = false
 	end
 end)
 
